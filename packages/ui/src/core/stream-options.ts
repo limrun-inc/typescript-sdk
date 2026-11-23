@@ -57,9 +57,9 @@ export type DeviceStreamOptions = DeviceStreamLiveOptions & {
   watchOnly?: boolean;
   sessionId?: string;
   /** Required with proxy transports; direct instance URLs can supply the platform implicitly. */
-  platform?: 'ios' | 'android';
+  platform?: 'ios' | 'android' | 'macos';
   deviceModel?: 'iphone-duo';
 } & (
     | { url: string; token: string; transport?: never }
-    | { transport: DeviceStreamTransport; platform: 'ios' | 'android'; url?: never; token?: never }
+    | { transport: DeviceStreamTransport; platform: 'ios' | 'android' | 'macos'; url?: never; token?: never }
   );

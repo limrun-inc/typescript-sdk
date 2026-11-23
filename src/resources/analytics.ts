@@ -86,7 +86,7 @@ export namespace AnalyticsInstancesResponse {
       /**
        * Platform name.
        */
-      platform: 'android' | 'ios' | 'xcode' | 'gradle';
+      platform: 'android' | 'ios' | 'xcode' | 'gradle' | 'macos';
 
       /**
        * Actual runtime minutes before platform multiplier
@@ -226,6 +226,11 @@ export namespace AnalyticsResponse {
     ios: { [key: string]: Series.Ios };
 
     /**
+     * Map of region to analytics stats for macOS. Absent from servers that predate it.
+     */
+    macos?: { [key: string]: Series.Macos };
+
+    /**
      * RFC3339 timestamp for the start of the bucket in the requested timezone,
      * including the local offset
      */
@@ -330,6 +335,11 @@ export namespace AnalyticsResponse {
        */
       wallclockMinutes?: number;
     }
+
+    /**
+     * Analytics for macOS instances in a region, the same shape as Gradle's.
+     */
+    export type Macos = Gradle;
 
     /**
      * Complete analytics for a specific region including billing breakdown
@@ -617,7 +627,7 @@ export namespace AnalyticsResponse {
       /**
        * Platform name.
        */
-      platform: 'android' | 'ios' | 'xcode' | 'gradle';
+      platform: 'android' | 'ios' | 'xcode' | 'gradle' | 'macos';
 
       /**
        * Actual runtime minutes before platform multiplier
@@ -733,6 +743,11 @@ export namespace AnalyticsResponse {
     ios: { [key: string]: Summary.Ios };
 
     /**
+     * Map of region to analytics stats for macOS. Absent from servers that predate it.
+     */
+    macos?: { [key: string]: Summary.Macos };
+
+    /**
      * Map of region to analytics stats for Xcode
      */
     xcode: { [key: string]: Summary.Xcode };
@@ -826,6 +841,11 @@ export namespace AnalyticsResponse {
        */
       wallclockMinutes?: number;
     }
+
+    /**
+     * Analytics for macOS instances in a region, the same shape as Gradle's.
+     */
+    export type Macos = Gradle;
 
     /**
      * Complete analytics for a specific region including billing breakdown

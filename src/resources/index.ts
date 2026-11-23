@@ -46,6 +46,14 @@ export {
   type GradleInstancesItems,
 } from './gradle-instances';
 export {
+  MacosInstances,
+  type MacosInstance,
+  type MacosInstanceUpdateParams,
+  type MacosInstanceCreateParams,
+  type MacosInstanceListParams,
+  type MacosInstancesItems,
+} from './macos-instances';
+export {
   type IosInstance,
   type IosInstanceUpdateParams,
   type IosInstanceCreateParams,

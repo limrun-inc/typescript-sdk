@@ -10,6 +10,7 @@ import type {
 export type { RemoteControlConnectionState, MicrophoneState, CameraStreamStats } from '../core/stream-types';
 export { withAuthenticationToken } from '../core/stream-utils';
 import React, {
+  useCallback,
   useEffect,
   useRef,
   useMemo,
@@ -24,7 +25,8 @@ import './remote-control.css';
 import { type DuoState, type DuoOrientation } from '../core/duo';
 const DuoView = lazy(() => import('./duo-view'));
 
-import { ANDROID_KEYS, AMOTION_EVENT, codeMap } from '../core/constants';
+import { ANDROID_KEYS, AMOTION_EVENT, MAC_INPUT_ACTION, codeMap } from '../core/constants';
+import { macKeyCodeFor } from '../core/mac-keys';
 import type { PlaybackStats } from '../core/playback-stats';
 
 import {
@@ -32,6 +34,9 @@ import {
   createInjectKeycodeMessage,
   createSetClipboardMessage,
   createTwoFingerTouchControlMessage,
+  createMouseControlMessage,
+  createMacKeyMessage,
+  createMacScrollMessage,
 } from '../core/webrtc-messages';
 import { type AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
@@ -382,6 +387,15 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
       landscape: { widthMultiplier: 0.962 },
     },
   },
+  // A macOS virtual machine is a desktop display: no device frame around it.
+  macos: {
+    videoBorderRadiusMultiplier: 0,
+    loadingLogoSize: '10%',
+    videoPosition: {
+      portrait: { heightMultiplier: 1 },
+      landscape: { widthMultiplier: 1 },
+    },
+  },
 };
 
 // The iPhone SE and iPhone 17e artwork is drawn by scripts/draw-iphone-frames.swift around the exact
@@ -627,6 +641,17 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     const clientRef = useRef<DeviceStream | null>(null);
     const sendBinaryControlMessage = (data: ArrayBuffer) => clientRef.current?.sendControl(data);
+
+    // Keys a macOS guest holds down. A key whose up the browser never delivers
+    // (focus moved away, Cmd+Tab, the tab hidden) is released here, or the
+    // guest keeps it held and later clicks and keys run as a shortcut.
+    const heldMacKeysRef = useRef(new Set<number>());
+    const releaseHeldMacKeys = useCallback(() => {
+      for (const keyCode of heldMacKeysRef.current) {
+        clientRef.current?.sendControl(createMacKeyMessage(MAC_INPUT_ACTION.UP, keyCode));
+      }
+      heldMacKeysRef.current.clear();
+    }, []);
     const sendDuoControl = (type: string, parameters: object) =>
       clientRef.current?.sendDuoControl(type, parameters) ??
       Promise.reject(new Error('Simulator disconnected'));
@@ -1149,6 +1174,32 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         return;
       }
 
+      // A macOS guest takes a desktop pointer: hover moves, every button, and no
+      // touch emulation or Alt two-finger gestures.
+      if (platform === 'macos') {
+        if ('touches' in event || !ctx || !clientRef.current?.getState().controlReady) return;
+        const geometry = mapClientPointToVideo(ctx, event.clientX, event.clientY);
+        if (!geometry) return;
+        const action =
+          event.type === 'mousedown' ? MAC_INPUT_ACTION.DOWN
+          : event.type === 'mouseup' ? MAC_INPUT_ACTION.UP
+          : MAC_INPUT_ACTION.MOVE;
+        // Leaving the view releases every button, so none stays held in the guest.
+        const buttons = event.type === 'mouseleave' ? 0 : event.buttons;
+        if (event.type === 'mousedown') videoRef.current?.focus();
+        sendBinaryControlMessage(
+          createMouseControlMessage(
+            action,
+            geometry.videoWidth,
+            geometry.videoHeight,
+            geometry.videoX,
+            geometry.videoY,
+            buttons,
+          ),
+        );
+        return;
+      }
+
       // Handle hover point updates for mouse events (only when Alt is held)
       if (!('touches' in event) && ctx) {
         if (event.type === 'mousemove') {
@@ -1422,6 +1473,34 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (!clientRef.current?.getState().controlReady) return;
       // Trackpad pinches arrive as ctrl+wheel; don't turn them into scrolls.
       if (event.ctrlKey) return;
+      // A macOS guest scrolls natively; no synthesized finger drag.
+      if (platform === 'macos') {
+        const ctx = computeVideoMappingContext();
+        if (!ctx) return;
+        const relativeX = event.clientX - ctx.videoRect.left - ctx.offsetX;
+        const relativeY = event.clientY - ctx.videoRect.top - ctx.offsetY;
+        if (relativeX < 0 || relativeX > ctx.actualWidth || relativeY < 0 || relativeY > ctx.actualHeight) {
+          return;
+        }
+        const point = mapClientPointToVideo(ctx, event.clientX, event.clientY);
+        if (!point) return;
+        event.preventDefault();
+        const scale =
+          event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
+          : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? ctx.actualHeight
+          : 1;
+        sendBinaryControlMessage(
+          createMacScrollMessage(
+            point.videoWidth,
+            point.videoHeight,
+            point.videoX,
+            point.videoY,
+            event.deltaX * scale,
+            event.deltaY * scale,
+          ),
+        );
+        return;
+      }
       // If the user is already touching/dragging (or holding Alt for the
       // two-finger gesture), let that win - don't add a second fake finger.
       if (isAltHeldRef.current || twoFingerStateRef.current) return;
@@ -1543,17 +1622,23 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       };
       const handleWindowBlur = () => {
         updateAltHeld(false);
+        releaseHeldMacKeys();
+      };
+      const handleVisibilityChange = () => {
+        if (document.hidden) releaseHeldMacKeys();
       };
       // Use capture phase so these fire before handleKeyboard's stopPropagation
       window.addEventListener('keydown', handleKeyDown, true);
       window.addEventListener('keyup', handleKeyUp, true);
       window.addEventListener('blur', handleWindowBlur);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
       return () => {
         window.removeEventListener('keydown', handleKeyDown, true);
         window.removeEventListener('keyup', handleKeyUp, true);
         window.removeEventListener('blur', handleWindowBlur);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
-    }, []);
+    }, [releaseHeldMacKeys]);
 
     const handleKeyboard = (event: React.KeyboardEvent) => {
       event.preventDefault();
@@ -1580,6 +1665,27 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (!clientRef.current?.getState().controlReady) {
         // Use the wrapper for conditional warning
         debugWarn('Data channel not ready for keyboard event:', clientRef.current?.getState().connection);
+        return;
+      }
+
+      // A macOS guest gets every key as pressed, modifiers included, so its own
+      // shortcuts work: Cmd+V pastes the guest's clipboard. The guest repeats a
+      // held key itself, so the browser's repeats are dropped.
+      if (platform === 'macos') {
+        if (event.type === 'keydown' && event.repeat) return;
+        const keyCode = macKeyCodeFor(event.code);
+        if (keyCode === undefined) {
+          debugLog(`Ignoring unmapped key for macOS: code=${event.code}`);
+          return;
+        }
+        if (event.type === 'keydown') heldMacKeysRef.current.add(keyCode);
+        else heldMacKeysRef.current.delete(keyCode);
+        sendBinaryControlMessage(
+          createMacKeyMessage(
+            event.type === 'keydown' ? MAC_INPUT_ACTION.DOWN : MAC_INPUT_ACTION.UP,
+            keyCode,
+          ),
+        );
         return;
       }
 
@@ -2041,6 +2147,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onTouchMove={handleInteraction}
         onTouchEnd={handleInteraction}
         onTouchCancel={handleInteraction}
+        // A right click goes to the macOS guest, not the browser's menu.
+        onContextMenu={platform === 'macos' ? (event) => event.preventDefault() : undefined}
       >
         {showAltIndicators && hoverPoint && (
           <>
@@ -2097,7 +2205,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         )}
         <video
           ref={videoRef}
-          className={['rc-video', !frameVisible && 'rc-video-frameless', !videoLoaded && 'rc-video-loading']
+          className={[
+            'rc-video',
+            !frameVisible && 'rc-video-frameless',
+            !videoLoaded && (platform === 'macos' ? 'rc-video-loading-desktop' : 'rc-video-loading'),
+          ]
             .filter(Boolean)
             .join(' ')}
           style={{
@@ -2128,6 +2240,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             if (videoRef.current) {
               videoRef.current.style.outline = 'none';
             }
+            releaseHeldMacKeys();
           }}
         />
         {isDuo && (

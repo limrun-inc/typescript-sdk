@@ -83,6 +83,20 @@ Methods:
 - <code title="get /v1/gradle_instances/{id}">client.gradleInstances.<a href="./src/resources/gradle-instances.ts">get</a>(id) -> GradleInstance</code>
 - <code title="get /v1/gradle_instances/{id}/build_logs">client.gradleInstances.<a href="./src/resources/gradle-instances-helpers.ts">listBuildLogs</a>(id) -> GradleBuildLog[]</code>
 
+# MacosInstances
+
+Types:
+
+- <code><a href="./src/resources/macos-instances.ts">MacosInstance</a></code>
+
+Methods:
+
+- <code title="post /v1/macos_instances">client.macosInstances.<a href="./src/resources/macos-instances.ts">create</a>({ ...params }) -> MacosInstance</code>
+- <code title="get /v1/macos_instances">client.macosInstances.<a href="./src/resources/macos-instances.ts">list</a>({ ...params }) -> MacosInstancesItems</code>
+- <code title="delete /v1/macos_instances/{id}">client.macosInstances.<a href="./src/resources/macos-instances.ts">delete</a>(id) -> void</code>
+- <code title="patch /v1/macos_instances/{id}">client.macosInstances.<a href="./src/resources/macos-instances.ts">update</a>(id, { ...params }) -> void</code>
+- <code title="get /v1/macos_instances/{id}">client.macosInstances.<a href="./src/resources/macos-instances.ts">get</a>(id) -> MacosInstance</code>
+
 # Analytics
 
 Types:

@@ -1,6 +1,8 @@
-import { ANDROID_KEYS, codeMap } from './constants';
+import { ANDROID_KEYS, MAC_INPUT_ACTION, codeMap } from './constants';
+import { macKeyCodeFor } from './mac-keys';
 import {
   createInjectKeycodeMessage,
+  createMacKeyMessage,
   createTouchControlMessage,
   createSetClipboardMessage,
 } from './webrtc-messages';
@@ -1246,12 +1248,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         : null;
       currentOutboundMicSender = outboundMicTransceiver?.sender ?? null;
 
-      // As hardware encoder, we use H265 for iOS and VP9 for Android.
-      // We make sure these two are the first ones in the list.
-      // If not, the fallback is H264 which is also hardware accelerated, although not as good,
-      // available on all platforms.
-      //
-      // The rest is not important.
+      // Every Limrun stream server encodes H.265 in hardware, so it comes
+      // first for every platform, then H.264, which is hardware accelerated
+      // everywhere too. The rest is not important.
       if (RTCRtpReceiver.getCapabilities) {
         const capabilities = RTCRtpReceiver.getCapabilities('video');
         if (capabilities && capabilities.codecs) {
@@ -1259,10 +1258,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           const sortedCodecs = codecs.sort((a, b) => {
             const getCodecPriority = (codec: { mimeType: string }): number => {
               const mimeType = codec.mimeType.toLowerCase();
-              if (mimeType.includes('vp9')) return 1;
-              if (mimeType.includes('h265') || mimeType.includes('hevc')) return 2;
-              if (mimeType.includes('h264') || mimeType.includes('avc')) return 3;
-              return 4; // Everything else
+              if (mimeType.includes('h265') || mimeType.includes('hevc')) return 1;
+              if (mimeType.includes('h264') || mimeType.includes('avc')) return 2;
+              return 3; // Everything else
             };
             return getCodecPriority(a) - getCodecPriority(b);
           });
@@ -1355,7 +1353,8 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         // channel. The fetcher's send function reuses this WS; it stops
         // sending if the WS dies. start() is called lazily based on the
         // inspectMode option or updateOptions().
-        if (!currentAxFetcher) {
+        // No accessibility tree is served for a macOS guest yet.
+        if (!currentAxFetcher && platform !== 'macos') {
           currentAxFetcher = new AxFetcher({
             platform,
             baseIntervalMs: axPollIntervalMs,
@@ -2030,6 +2029,39 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     sendKeyEvent: (event: ImperativeKeyboardEvent) => {
       if (!currentDataChannel || currentDataChannel.readyState !== 'open') {
         debugWarn('Data channel not ready for imperative key command:', currentDataChannel?.readyState);
+        return;
+      }
+
+      // A macOS guest takes keys by macOS virtual key code, and a modifier is a
+      // key of its own: the event's modifier flags are pressed before the key
+      // goes down and released after it comes up, so { code: 'KeyC', metaKey }
+      // is Cmd+C.
+      if (platform === 'macos') {
+        const keyCode = macKeyCodeFor(event.code);
+        if (keyCode === undefined) {
+          debugWarn(`Unknown event.code for imperative command: ${event.code}`);
+          return;
+        }
+        // A modifier key, left or right, already carries its own flag.
+        const modifiers = (
+          [
+            [event.metaKey, 'Meta'],
+            [event.ctrlKey, 'Control'],
+            [event.altKey, 'Alt'],
+            [event.shiftKey, 'Shift'],
+          ] as const
+        )
+          .filter(([held, family]) => held && !event.code.startsWith(family))
+          .map(([, family]) => macKeyCodeFor(`${family}Left`)!);
+        const send = (action: number, code: number) =>
+          sendBinaryControlMessage(createMacKeyMessage(action, code));
+        if (event.type === 'keydown') {
+          for (const modifier of modifiers) send(MAC_INPUT_ACTION.DOWN, modifier);
+          send(MAC_INPUT_ACTION.DOWN, keyCode);
+        } else {
+          send(MAC_INPUT_ACTION.UP, keyCode);
+          for (const modifier of [...modifiers].reverse()) send(MAC_INPUT_ACTION.UP, modifier);
+        }
         return;
       }
 

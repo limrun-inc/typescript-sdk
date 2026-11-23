@@ -151,3 +151,58 @@ export function createInjectKeycodeMessage(
   view.setInt32(offset, metaState, true);
   return buffer;
 }
+
+// A desktop pointer event: 18 bytes. Buttons is a DOM MouseEvent.buttons mask
+// (1 primary, 2 secondary, 4 auxiliary); moves carry it too, so a drag is a move
+// with a button held and a hover is a move without one.
+export function createMouseControlMessage(
+  action: number,
+  videoWidth: number,
+  videoHeight: number,
+  x: number,
+  y: number,
+  buttons: number,
+): ArrayBuffer {
+  const buffer = new ArrayBuffer(18);
+  const view = new DataView(buffer);
+  view.setUint8(0, CONTROL_MSG_TYPE.INJECT_MOUSE_EVENT);
+  view.setUint8(1, action);
+  view.setInt32(2, Math.round(x), true);
+  view.setInt32(6, Math.round(y), true);
+  view.setUint16(10, videoWidth, true);
+  view.setUint16(12, videoHeight, true);
+  view.setInt32(14, buttons, true);
+  return buffer;
+}
+
+// A key by macOS virtual key code: 4 bytes.
+export function createMacKeyMessage(action: number, keyCode: number): ArrayBuffer {
+  const buffer = new ArrayBuffer(4);
+  const view = new DataView(buffer);
+  view.setUint8(0, CONTROL_MSG_TYPE.INJECT_MAC_KEY);
+  view.setUint8(1, action);
+  view.setUint16(2, keyCode, true);
+  return buffer;
+}
+
+// A scroll at a point, in pixels of the page: 21 bytes. Positive deltaY scrolls
+// content up, as DOM WheelEvent.deltaY does.
+export function createMacScrollMessage(
+  videoWidth: number,
+  videoHeight: number,
+  x: number,
+  y: number,
+  deltaX: number,
+  deltaY: number,
+): ArrayBuffer {
+  const buffer = new ArrayBuffer(21);
+  const view = new DataView(buffer);
+  view.setUint8(0, CONTROL_MSG_TYPE.INJECT_MAC_SCROLL);
+  view.setInt32(1, Math.round(x), true);
+  view.setInt32(5, Math.round(y), true);
+  view.setUint16(9, videoWidth, true);
+  view.setUint16(11, videoHeight, true);
+  view.setFloat32(13, deltaX, true);
+  view.setFloat32(17, deltaY, true);
+  return buffer;
+}

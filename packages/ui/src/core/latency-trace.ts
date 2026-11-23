@@ -1,3 +1,5 @@
+import { CONTROL_MSG_TYPE } from './constants';
+
 /** A trace belongs to one connection; older servers keep the ordinary input format. */
 export function createLatencyTrace(
   peer: RTCPeerConnection,
@@ -33,11 +35,20 @@ export function createLatencyTrace(
       accepted = !closed && version === 1;
     },
     wrap(data: ArrayBuffer): ArrayBuffer {
-      if (!accepted || data.byteLength !== 32) return data;
+      if (!accepted || data.byteLength === 0) return data;
       const original = new DataView(data);
+      const type = original.getUint8(0);
+      // macOS pointer, key and scroll messages are traced whole; only macOS
+      // daemons receive them, and they decode the envelope for every type.
+      const macInput =
+        type === CONTROL_MSG_TYPE.INJECT_MOUSE_EVENT ||
+        type === CONTROL_MSG_TYPE.INJECT_MAC_KEY ||
+        type === CONTROL_MSG_TYPE.INJECT_MAC_SCROLL;
       // v1 traces down/move/up. Keep cancel and Android pointer transitions usable.
-      if (original.getUint8(0) !== 2 || original.getUint8(1) > 2) return data;
-      const envelope = new ArrayBuffer(38);
+      const touch =
+        data.byteLength === 32 && type === CONTROL_MSG_TYPE.INJECT_TOUCH_EVENT && original.getUint8(1) <= 2;
+      if (!macInput && !touch) return data;
+      const envelope = new ArrayBuffer(6 + data.byteLength);
       const view = new DataView(envelope);
       view.setUint8(0, 240);
       view.setUint8(1, 1);

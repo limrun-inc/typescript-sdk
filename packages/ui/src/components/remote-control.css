@@ -83,6 +83,11 @@
   aspect-ratio: 9 / 19.5;
 }
 
+/* A macOS guest is a desktop display. */
+.rc-video-loading-desktop {
+  aspect-ratio: 16 / 9;
+}
+
 .rc-touch-indicator {
   position: absolute;
   z-index: 40;

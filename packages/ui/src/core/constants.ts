@@ -13,6 +13,19 @@ export const CONTROL_MSG_TYPE = {
   SET_CLIPBOARD: 9,
   SET_DISPLAY_POWER: 10,
   ROTATE_DEVICE: 11,
+  // macOS: a desktop pointer, with hover moves and a button mask.
+  INJECT_MOUSE_EVENT: 40,
+  // macOS: a key by its macOS virtual key code, so modifiers travel on their own.
+  INJECT_MAC_KEY: 41,
+  // macOS: wheel and trackpad scrolling, as pixel deltas.
+  INJECT_MAC_SCROLL: 42,
+} as const;
+
+// Actions of INJECT_MOUSE_EVENT and INJECT_MAC_KEY.
+export const MAC_INPUT_ACTION = {
+  DOWN: 0,
+  UP: 1,
+  MOVE: 2,
 } as const;
 
 export const AMOTION_EVENT = {
