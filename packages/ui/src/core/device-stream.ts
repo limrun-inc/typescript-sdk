@@ -2042,16 +2042,17 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
           debugWarn(`Unknown event.code for imperative command: ${event.code}`);
           return;
         }
+        // A modifier key, left or right, already carries its own flag.
         const modifiers = (
           [
-            [event.metaKey, 'MetaLeft'],
-            [event.ctrlKey, 'ControlLeft'],
-            [event.altKey, 'AltLeft'],
-            [event.shiftKey, 'ShiftLeft'],
+            [event.metaKey, 'Meta'],
+            [event.ctrlKey, 'Control'],
+            [event.altKey, 'Alt'],
+            [event.shiftKey, 'Shift'],
           ] as const
         )
-          .filter(([held, code]) => held && code !== event.code)
-          .map(([, code]) => macKeyCodeFor(code)!);
+          .filter(([held, family]) => held && !event.code.startsWith(family))
+          .map(([, family]) => macKeyCodeFor(`${family}Left`)!);
         const send = (action: number, code: number) =>
           sendBinaryControlMessage(createMacKeyMessage(action, code));
         if (event.type === 'keydown') {

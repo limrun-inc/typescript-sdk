@@ -636,8 +636,9 @@ describe('headless device stream', () => {
     peer.connected();
     client.sendKeyEvent({ type: 'keydown', code: 'KeyC', metaKey: true, shiftKey: true });
     client.sendKeyEvent({ type: 'keyup', code: 'KeyC', metaKey: true, shiftKey: true });
-    // A modifier sent as the key itself is not pressed twice.
+    // A modifier sent as the key itself, on either side, is not pressed twice.
     client.sendKeyEvent({ type: 'keydown', code: 'MetaLeft', metaKey: true });
+    client.sendKeyEvent({ type: 'keydown', code: 'ShiftRight', shiftKey: true });
     const keys = peer.channel.send.mock.calls.map(([data]: [ArrayBuffer]) => {
       const view = new DataView(data);
       return [view.getUint8(0), view.getUint8(1), view.getUint16(2, true)];
@@ -650,6 +651,7 @@ describe('headless device stream', () => {
       [41, 1, 0x38],
       [41, 1, 0x37],
       [41, 0, 0x37],
+      [41, 0, 0x3c],
     ]);
   });
 
