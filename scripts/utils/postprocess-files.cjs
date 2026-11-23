@@ -40,8 +40,10 @@ async function postprocess() {
     // augmentations, so `declare module './x'` there names the CommonJS twin and the helpers it
     // grafts on (createClient and friends) never reach an ESM consumer's types.
     if (file.endsWith('.d.mts')) {
-      transformed = transformed.replace(/^(declare module ['"])(\.\.?\/[^'"]+?)(['"])/gm, (match, open, specifier, close) =>
-        /\.[cm]?js$/.test(specifier) ? match : `${open}${specifier}.mjs${close}`,
+      transformed = transformed.replace(
+        /^(declare module ['"])(\.\.?\/[^'"]+?)(['"])/gm,
+        (match, open, specifier, close) =>
+          /\.[cm]?js$/.test(specifier) ? match : `${open}${specifier}.mjs${close}`,
       );
     }
 

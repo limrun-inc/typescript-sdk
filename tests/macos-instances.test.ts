@@ -164,6 +164,59 @@ describe('macOS client', () => {
   });
 });
 
+test('a macOS tunnel dials the instance with its token and asks for no inspection', async () => {
+  const { WebSocketServer } = await import('ws');
+  const { destinationTunnelConfigHash, disabledDestinationTunnelInspection } = await import(
+    '../src/destination-tunnel'
+  );
+  const relay = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  await new Promise<void>((resolve) => relay.once('listening', () => resolve()));
+  const port = (relay.address() as import('net').AddressInfo).port;
+  const seen: Array<{ path: string; auth?: string; start: Record<string, unknown> }> = [];
+  relay.on('connection', (ws, req) => {
+    ws.once('message', (data) => {
+      const start = JSON.parse(data.toString()) as Record<string, unknown>;
+      seen.push({
+        path: req.url!,
+        ...(req.headers.authorization && { auth: req.headers.authorization }),
+        start,
+      });
+      ws.send(
+        JSON.stringify({
+          type: 'ready',
+          version: 1,
+          tunnelId: 'tun-1',
+          configHash: destinationTunnelConfigHash(['localhost:3000'], disabledDestinationTunnelInspection()),
+          selectors: [{ id: 'selector-1', kind: 'route', value: 'localhost:3000' }],
+        }),
+      );
+    });
+  });
+  try {
+    const limrun = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
+    const mac = await limrun.macosInstances.createClient({
+      apiUrl: `http://127.0.0.1:${port}/v1/macos_eu_01h/api`,
+      token: 'control',
+      logLevel: 'none',
+    });
+    const tunnel = await mac.startTunnel({ selectors: ['localhost:3000'], resetsInactivityTimeout: false });
+    expect(tunnel.tunnelId).toBe('tun-1');
+    tunnel.close();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.path).toBe('/v1/macos_eu_01h/api/tunnel');
+    expect(seen[0]!.auth).toBe('Bearer control');
+    expect(seen[0]!.start).toMatchObject({
+      type: 'start',
+      selectors: ['localhost:3000'],
+      resetsInactivityTimeout: false,
+      inspection: { enabled: false },
+    });
+  } finally {
+    for (const client of relay.clients) client.terminate();
+    await new Promise<void>((resolve) => relay.close(() => resolve()));
+  }
+});
+
 test('macOS snapshots are assets listed by kind, with the build they restore onto', async () => {
   const calls: URL[] = [];
   const asset = {

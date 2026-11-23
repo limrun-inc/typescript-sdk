@@ -104,6 +104,9 @@ export namespace MacosInstance {
 
     /** Current effective permissions. Present on live GETs; historical records may omit it. */
     role?: { permissions: string[] };
+
+    /** The private tunnel the instance named at create. */
+    tunnel?: string;
   }
 
   export interface Status {
@@ -257,6 +260,13 @@ export namespace MacosInstanceCreateParams {
       /** Asset permissions delegated by the creator. An empty array grants nothing. */
       permissions: Array<string>;
     };
+
+    /**
+     * Names a private tunnel, created in the console (Network) or the API, that
+     * serves this instance. Creation fails while no connector (`lim tunnel run`)
+     * holds it, and the instance becomes ready only after the tunnel attaches.
+     */
+    tunnel?: string;
   }
 
   export namespace Spec {

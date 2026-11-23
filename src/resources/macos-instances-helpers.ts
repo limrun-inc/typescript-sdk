@@ -9,11 +9,31 @@ import {
   type LogLevel,
 } from './daemon-client-shared';
 import { MacosInstances, type MacosInstance } from './macos-instances';
+import {
+  startDestinationTcpTunnel,
+  type DestinationTcpTunnel,
+  type DestinationTunnelStartOptions,
+} from '../destination-tunnel-dialer';
+import {
+  getDestinationTunnelStatus,
+  stopDestinationTunnel,
+  type DestinationTunnelStatus,
+} from '../internal/destination-tunnel-management';
+import { deriveDestinationTunnelURL } from '../internal/destination-tunnel-url';
 
 export type MacosCreateClientParams = { logLevel?: LogLevel } & (
   | { instance: MacosInstance }
   | { apiUrl: string; token: string }
 );
+
+/**
+ * Options of {@link MacosClient.startTunnel}. The guest relays tunnel traffic as it is, so the
+ * inspection options iOS and Android take do not apply.
+ */
+export type MacosTunnelOptions = Pick<
+  DestinationTunnelStartOptions,
+  'selectors' | 'window' | 'resetsInactivityTimeout' | 'logLevel'
+>;
 
 /** A point on the screen, in pixels of `screenshot()`, from the top-left corner. */
 export interface MacosPoint {
@@ -99,6 +119,20 @@ export interface MacosClient {
    * final progress event; `onProgress` sees every event, with byte counts while downloading.
    */
   restoreSnapshot(options: MacosSnapshotRestoreOptions): Promise<MacosSnapshotProgress>;
+
+  /**
+   * Let code in the guest reach destinations on this machine through a destination tunnel, as on
+   * an iOS simulator. `localhost:port` and `IPv4:port` selectors are reached at those addresses in
+   * the guest; domain selectors are resolved in the guest to addresses the tunnel serves and
+   * dialed from this machine. One tunnel serves an instance at a time.
+   */
+  startTunnel(options: MacosTunnelOptions): Promise<DestinationTcpTunnel>;
+
+  /** The instance's tunnel, if one is active. */
+  getTunnelStatus(): Promise<DestinationTunnelStatus>;
+
+  /** Stop the tunnel with this ID; another tunnel that replaced it keeps running. */
+  stopTunnel(tunnelId: string): Promise<void>;
 }
 
 export interface MacosSnapshotRestoreOptions {
@@ -194,6 +228,25 @@ class MacosInstancesHelpers extends MacosInstances {
           mode: 'multiplexed',
           ...tunnelOptions,
         });
+      },
+
+      startTunnel(tunnelOptions) {
+        return startDestinationTcpTunnel(deriveDestinationTunnelURL(apiUrl), token, {
+          selectors: tunnelOptions.selectors,
+          ...(tunnelOptions.window === undefined ? {} : { window: tunnelOptions.window }),
+          ...(tunnelOptions.resetsInactivityTimeout === undefined ?
+            {}
+          : { resetsInactivityTimeout: tunnelOptions.resetsInactivityTimeout }),
+          logLevel: tunnelOptions.logLevel ?? params.logLevel ?? 'info',
+        });
+      },
+
+      getTunnelStatus() {
+        return getDestinationTunnelStatus(apiUrl, token);
+      },
+
+      async stopTunnel(tunnelId) {
+        await stopDestinationTunnel(apiUrl, token, tunnelId);
       },
 
       async screenshot(): Promise<Buffer> {
