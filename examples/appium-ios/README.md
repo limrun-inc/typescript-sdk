@@ -18,16 +18,16 @@ cd typescript-sdk/examples/appium-ios
 It creates an iOS instance where `WebDriverAgent` is pre-installed
 and launched and then starts running the automation commands.
 
-Install appium:
+Install Appium 3:
 
 ```bash
-npm i --location=global appium
+npm i --location=global appium@3
 ```
 
 Install our custom driver that's based on upstream:
 
 ```bash
-appium driver install --source npm @limrun/appium-xcuitest-driver@10.14.6-lim.10
+appium driver install --source npm @limrun/appium-xcuitest-driver@12.22.8-lim.1
 ```
 
 Start Appium server in a separate terminal:
@@ -64,16 +64,19 @@ automation.
 
 The summary of our patches is as following:
 
-- To manage simulators, the driver makes `xcrun simctl` calls assuming it's on
-  the same host.
-  - We forward those calls to our macOS host running the iOS
-    simulator under isolation and disable some of them, such as booting and termination
-    as they are managed through Limrun API.
+- To manage simulators, the upstream driver talks to CoreSimulator on the same host.
+  - We send those calls to the Limrun instance through `@limrun/api`. Installing and
+    launching apps, permissions, location, pasteboard, screenshots, screen recording and
+    the rest run on the macOS host that runs the simulator. Operations that would erase
+    or shut down the simulator, such as `fullReset`, fail with a clear error, since the
+    instance lifecycle is managed through the Limrun API.
 - To seed files, it simply copies to the corresponding directory in the host it is running on.
   - We upload the file and our internal server places it on the target location.
-- To automate Safari, it scans the list of open UNIX sockets by Simulator usually under `/tmp/`
-  and connects to them directly.
-  - We create a tunnel through the Limrun API to expose those UNIX sockets locally over TCP.
+- To automate Safari, it connects to the Web Inspector UNIX socket the simulator opens on the host.
+  - We create a tunnel through the Limrun API to expose that socket locally over TCP.
+- To reach `WebDriverAgent`, it expects a local port.
+  - The driver uses the instance's HTTPS endpoint for port 8100 and authenticates with the
+    instance token, so you only pass `limInstanceApiUrl` and `limInstanceToken`.
 
 Important to make clear that these are simply implementation details of the driver;
 your test code is not affected in anyway, the same code would work with local iOS simulator

@@ -32,35 +32,26 @@ const instance = await limrun.iosInstances.create({
   },
 });
 console.timeEnd('create');
-if (!instance.status.targetHttpPortUrlPrefix) {
-  throw new Error('Target HTTP Port URL Prefix is missing');
-}
-if (!instance.status.apiUrl) {
-  throw new Error('API URL is missing');
+const { apiUrl, token } = instance.status;
+if (!apiUrl || !token) {
+  throw new Error('API URL or token is missing');
 }
 const lim = await Ios.createInstanceClient({
-  apiUrl: instance.status.apiUrl,
-  token: instance.status.token,
+  apiUrl,
+  token,
 });
 console.log('Device UDID:', lim.deviceInfo.udid);
 
-// targetHttpPortUrlPrefix allows us to append any port to the URL to connect to that port
-// on the simulator and WDA listens on port 8100 by default.
-// The Appium driver requires an explicit port in the URL and defaults to
-// 4444 when it is missing, so assemble one with the port spelled out.
-// (URL.toString() would drop an explicit :443 as the https default.)
-const wdaBase = new URL(instance.status.targetHttpPortUrlPrefix);
-const wdaUrl = `${wdaBase.protocol}//${wdaBase.hostname}:${wdaBase.port || '443'}${wdaBase.pathname}8100`;
-
 // WDA may crash during the test and launchMode in initialAssets is effective only for
 // the first installation. So, we make sure WDA is running before the test starts.
+// WDA listens on port 8100, which the instance exposes over HTTPS.
 let wdaRunning = true;
 try {
   const controller = new AbortController();
   setTimeout(() => controller.abort(), 3000);
-  await fetch(wdaUrl + '/status', {
+  await fetch(lim.targetHttpPortUrl(8100) + '/status', {
     headers: {
-      Authorization: `Bearer ${instance.status.token}`,
+      Authorization: `Bearer ${token}`,
     },
     signal: controller.signal,
   });
@@ -79,24 +70,16 @@ const driver = await remote({
   capabilities: {
     platformName: 'iOS',
     browserName: 'safari',
-    'appium:udid': lim.deviceInfo.udid,
     'appium:automationName': '@limrun/xcuitest',
+    // The driver finds the simulator, its WebDriverAgent and the WDA credentials
+    // from these two capabilities.
+    // @ts-expect-error -- limInstance* are our custom capabilities not known to webdriverio
+    'appium:limInstanceApiUrl': apiUrl,
+    'appium:limInstanceToken': token,
     'appium:noReset': true, // Otherwise, deletes the app we installed.
-    'appium:fullReset': false,
-    'appium:webDriverAgentUrl': wdaUrl,
-    'appium:wdaLocalPort': 443,
-    'appium:useNewWDA': false,
-    'appium:usePreinstalledWDA': true,
-    'appium:skipLogCapture': true,
     // Safari's first launch on a fresh instance can take a while to expose
     // its webviews to the remote debugger.
     'appium:webviewConnectTimeout': 60_000,
-    // @ts-expect-error -- limInstance* are our custom capabilities not known to webdriverio
-    'appium:limInstanceApiUrl': instance.status.apiUrl,
-    'appium:limInstanceToken': instance.status.token,
-    'appium:wdaRequestHeaders': {
-      Authorization: `Bearer ${instance.status.token}`,
-    },
   },
   hostname: '127.0.0.1',
   port: 4723,
