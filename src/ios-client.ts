@@ -25,6 +25,8 @@ import {
   type DestinationTunnelStatus,
 } from './internal/destination-tunnel-management';
 import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
+import { directInstanceErrorReason } from './internal/direct-instance-errors';
+import { LimrunError } from './core/error';
 import {
   startHttpProxy as startLocalHttpProxy,
   startForwardHttpProxy as startLocalForwardHttpProxy,
@@ -295,6 +297,64 @@ export type LsofEntry = {
   kind: 'unix';
   path: string;
 };
+
+/** Which app {@link InstanceClient.sampleStacks} samples, and for how long. */
+export type SampleStacksOptions = {
+  /** Defaults to the app launched last, leaving out XCTest runners. */
+  bundleId?: string;
+  /** 1 to 30 seconds. Defaults to 5. */
+  durationSeconds?: number;
+};
+
+/** The call stacks of a running app over a few seconds. */
+export type StackSample = {
+  bundleId: string;
+  /** The process that was sampled. */
+  pid: number;
+  durationSeconds: number;
+  /** The report of the simulator's `sample` tool, as the tool printed it. */
+  report: string;
+};
+
+/** Which app {@link InstanceClient.memoryReport} inspects. */
+export type MemoryReportOptions = {
+  /** Defaults to the app launched last, leaving out XCTest runners. */
+  bundleId?: string;
+};
+
+/** The memory of a running app at one moment. */
+export type MemoryReport = {
+  bundleId: string;
+  /** The process that was inspected. */
+  pid: number;
+  /** The app's memory footprint when the report started. */
+  footprintBytes: number;
+  /** The highest footprint of this process since it started. */
+  peakFootprintBytes: number;
+  /** Leaked allocations found; absent when the tool's totals could not be read. */
+  leakCount?: number;
+  /** Bytes held by those allocations. */
+  leakedBytes?: number;
+  /** The report of the simulator's `leaks` tool, as the tool printed it. */
+  leaks: string;
+  /** The heap by class, from `heap -s`. */
+  heap: string;
+  /** The memory regions, from `vmmap --summary`. */
+  regions: string;
+};
+
+/**
+ * The instance answered 404 to a stack sample or memory report: its runtime
+ * predates them, or the instance no longer exists.
+ */
+export class AppProfilingUnavailableError extends LimrunError {
+  constructor() {
+    super(
+      'This instance cannot profile apps: its runtime predates stack samples and memory reports, or the instance no longer exists.',
+    );
+    this.name = 'AppProfilingUnavailableError';
+  }
+}
 
 export type DuoDisplay = 'outer' | 'inner';
 
@@ -1207,6 +1267,27 @@ export type InstanceClient = {
    * window loses the samples in between.
    */
   streamPerformance: (handlers: PerformanceStreamHandlers) => () => void;
+
+  /**
+   * Sample the call stacks of a running app to see where it spends time. The
+   * app keeps running. Only apps you installed can be sampled. A simulator
+   * runs on a Mac, so the report shows which code is busy, not how long the
+   * same work takes on a device.
+   *
+   * @throws {AppProfilingUnavailableError} If the instance's runtime predates this.
+   * @throws If the app is not running, or another sample or report is in progress.
+   */
+  sampleStacks: (options?: SampleStacksOptions) => Promise<StackSample>;
+
+  /**
+   * Report the memory of a running app: its footprint, leaked allocations, its
+   * heap by class and its memory regions. The app keeps running. Only apps
+   * you installed can be inspected.
+   *
+   * @throws {AppProfilingUnavailableError} If the instance's runtime predates this.
+   * @throws If the app is not running, or another sample or report is in progress.
+   */
+  memoryReport: (options?: MemoryReportOptions) => Promise<MemoryReport>;
 
   /**
    * Play an audio file as the simulator's microphone input. Stage the file on
@@ -2686,6 +2767,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             startPerformanceCapture,
             stopPerformanceCapture,
             streamPerformance: streamClientPerformance,
+            sampleStacks,
+            memoryReport,
             playOnMicrophone,
             stopMicrophonePlayback,
             microphoneStatus,
@@ -3264,6 +3347,44 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const stopPerformanceCapture = async (): Promise<void> => {
       await sendRequest<void>('stopPerformanceCapture', {}, undefined, captureStopTimeoutMs);
     };
+
+    // The instance ends a profiling tool that overruns `serverSeconds`; the extra ten seconds
+    // let its own answer arrive before this side gives up.
+    const profileApp = async <T>(path: string, body: object, serverSeconds: number): Promise<T> => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), (serverSeconds + 10) * 1000);
+      try {
+        const response = await nodeProxyTransport.fetch(`${options.apiUrl}${path}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${options.token}`,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        } as any);
+        if (response.status === 404) {
+          throw new AppProfilingUnavailableError();
+        }
+        if (!response.ok) {
+          const text = await response.text();
+          throw Object.assign(new Error(directInstanceErrorReason(text)), {
+            status: response.status,
+            body: text,
+          });
+        }
+        return (await response.json()) as T;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    const sampleStacks = (opts: SampleStacksOptions = {}): Promise<StackSample> =>
+      profileApp('/performance/stacks', opts, (opts.durationSeconds ?? 5) + 30);
+
+    // The instance runs three tools, each with a minute to finish.
+    const memoryReport = (opts: MemoryReportOptions = {}): Promise<MemoryReport> =>
+      profileApp('/performance/memory', opts, 180);
 
     const tailSession = <T extends { ts: number }>(
       stream: 'applogs' | 'events',

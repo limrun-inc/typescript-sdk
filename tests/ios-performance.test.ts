@@ -152,3 +152,80 @@ test('Ios.streamPerformance tails the endpoint with only the apiUrl and token', 
   expect(authorization).toBe('Bearer test-token');
   expect(events).toEqual(['com.example.app', 'replayed']);
 });
+
+const postedTo = (fetch: unknown) =>
+  (fetch as jest.Mock).mock.calls.map(([input, init]) => ({
+    url: String(input),
+    method: init?.method,
+    authorization: new Headers(init?.headers).get('Authorization'),
+    body: JSON.parse(String(init?.body)),
+  }));
+
+test('sampleStacks and memoryReport post the app to the instance and return its reports', async () => {
+  const stacks = { bundleId: 'com.example.app', pid: 7, durationSeconds: 3, report: 'Call graph:\n' };
+  const memory = {
+    bundleId: 'com.example.app',
+    pid: 7,
+    footprintBytes: 10,
+    peakFootprintBytes: 12,
+    leakCount: 2,
+    leakedBytes: 1808,
+    leaks: 'Process 7: 2 leaks for 1808 total leaked bytes.\n',
+    heap: 'COUNT BYTES\n',
+    regions: 'Physical footprint: 10\n',
+  };
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) =>
+    Response.json(String(input).endsWith('/stacks') ? stacks : memory),
+  );
+  const client = await connect();
+  try {
+    expect(await client.sampleStacks({ bundleId: 'com.example.app', durationSeconds: 3 })).toEqual(stacks);
+    // Without options the instance picks the app launched last.
+    expect(await client.memoryReport()).toEqual(memory);
+    expect(postedTo(nodeProxyTransport.fetch)).toEqual([
+      {
+        url: 'https://ios.example.test/performance/stacks',
+        method: 'POST',
+        authorization: 'Bearer test-token',
+        body: { bundleId: 'com.example.app', durationSeconds: 3 },
+      },
+      {
+        url: 'https://ios.example.test/performance/memory',
+        method: 'POST',
+        authorization: 'Bearer test-token',
+        body: {},
+      },
+    ]);
+  } finally {
+    client.disconnect();
+  }
+});
+
+// A runtime from before these operations has no such route, which is the one case a caller can fix
+// by creating a new instance.
+test('a 404 from the instance says its runtime cannot profile apps', async () => {
+  const { AppProfilingUnavailableError } = await import('../src/ios-client');
+  nodeProxyTransport.fetch = jest.fn(async () => new Response('Not Found', { status: 404 }));
+  const client = await connect();
+  try {
+    await expect(client.sampleStacks()).rejects.toBeInstanceOf(AppProfilingUnavailableError);
+    await expect(client.memoryReport()).rejects.toBeInstanceOf(AppProfilingUnavailableError);
+  } finally {
+    client.disconnect();
+  }
+});
+
+test('other refusals carry the instance message and status', async () => {
+  nodeProxyTransport.fetch = jest.fn(async () =>
+    Response.json({ message: 'com.example.app is not running.' }, { status: 422 }),
+  );
+  const client = await connect();
+  try {
+    await expect(client.sampleStacks({ bundleId: 'com.example.app' })).rejects.toMatchObject({
+      message: 'com.example.app is not running.',
+      status: 422,
+    });
+  } finally {
+    client.disconnect();
+  }
+});
