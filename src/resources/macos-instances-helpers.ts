@@ -229,7 +229,11 @@ class MacosInstancesHelpers extends MacosInstances {
           last = JSON.parse(event.data) as MacosSnapshotProgress;
           onProgress?.(last);
         }
-        if (!last) throw new Error('the instance ended the snapshot stream without reporting progress');
+        if (!last || !['restored', 'skipped', 'failed'].includes(last.phase)) {
+          throw new Error(
+            `the snapshot stream ended before the restore did (last phase: ${last?.phase ?? 'none'})`,
+          );
+        }
         return last;
       },
 
