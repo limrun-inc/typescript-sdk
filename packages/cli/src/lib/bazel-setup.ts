@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import Limrun from '@limrun/api';
 import { LIMRUN_DIR, ensureTryImport, isBazel9OrLater, renderXcodeConfigBuild } from '@limrun/api';
+import { onPath } from './agent-mcp';
 
 /**
  * Client configuration for the region's build plane: Bazel remote execution
@@ -31,13 +32,7 @@ export const CREDENTIAL_HELPER = 'lim-bazel-credentials';
  * it beside `lim`; a standalone tarball install links only `lim`.
  */
 export function credentialHelperOnPath(): boolean {
-  const names =
-    process.platform === 'win32' ?
-      ['.cmd', '.exe'].map((ext) => CREDENTIAL_HELPER + ext)
-    : [CREDENTIAL_HELPER];
-  return (process.env.PATH ?? '')
-    .split(path.delimiter)
-    .some((dir) => dir && names.some((name) => fs.existsSync(path.join(dir, name))));
+  return onPath(CREDENTIAL_HELPER);
 }
 
 /** How long a minted token lives; Bazel asks again before it expires. */
