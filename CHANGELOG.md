@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.75.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.74.0...v0.75.0) (2026-11-23)
+
+
+### Features
+
+* Gradle disk snapshots in the SDK and CLI ([#701](https://github.com/limrun-inc/typescript-sdk/issues/701)) ([f34ef9b](https://github.com/limrun-inc/typescript-sdk/commit/f34ef9bd4050e022c35f3042faf418018425d799))
+
 ## [0.74.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.73.4...v0.74.0) (2026-11-22)
 
 
