@@ -144,10 +144,10 @@
     wrap-ansi "^8.1.0"
     wrap-ansi-cjs "npm:wrap-ansi@^7.0.0"
 
-"@limrun/api@^0.50.0":
-  version "0.50.0"
-  resolved "https://registry.npmjs.org/@limrun/api/-/api-0.50.0.tgz#97b455f293948af28a3061e13b86e5104b9153a8"
-  integrity sha512-oHOd+9JYXIQpjUplnX84LmexhXHjtoDWigqtFYO8rXhhg+w0GgHgh0yEG/AZnkw70O4pI5ozWF3/3f6iXA4BNw==
+"@limrun/api@^0.77.0":
+  version "0.77.1"
+  resolved "https://registry.yarnpkg.com/@limrun/api/-/api-0.77.1.tgz#4c5b4a16181d7a90b4b7242010768d3248fb4bd5"
+  integrity sha512-9tJ+tm3eAqFQN2kSKHkSeuYPLBPa4WYxvYEfd7Bzu/fZCYJM4PbRlaqBLKeIao6RKVBHy/rQTDfa5WH7xM41Ig==
   dependencies:
     "@limrun/xdelta3-wasm" "0.2.0"
     "@types/har-format" "^1.2.16"
@@ -155,8 +155,7 @@
     https-proxy-agent "7.0.6"
     ignore "^7.0.5"
     proxy-from-env "^2.1.0"
-    smol-toml "^1.8.0"
-    undici "7.29.0"
+    undici "7.30.1"
     ws "^8.21.1"
     yauzl "^3.4.0"
 
@@ -1283,11 +1282,6 @@ signal-exit@^4.0.1:
   resolved "https://registry.yarnpkg.com/signal-exit/-/signal-exit-4.1.0.tgz#952188c1cbd546070e2dd20d0f41c0ae0530cb04"
   integrity sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==
 
-smol-toml@^1.8.0:
-  version "1.9.0"
-  resolved "https://registry.yarnpkg.com/smol-toml/-/smol-toml-1.9.0.tgz#f36b8dc7eb621c541c48f9fba6925dab95172817"
-  integrity sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ==
-
 spacetrim@0.11.59:
   version "0.11.59"
   resolved "https://registry.yarnpkg.com/spacetrim/-/spacetrim-0.11.59.tgz#b9cf378b5d1ab9ed729d4c7c3e4412ec00a187b9"
@@ -1452,7 +1446,7 @@ undici-types@~8.3.0:
   resolved "https://registry.yarnpkg.com/undici-types/-/undici-types-8.3.0.tgz#44e9fc9f3244648cdea35e4f9bb2d681e9410809"
   integrity sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==
 
-undici@7.29.0, undici@7.30.1, undici@^7.19.0:
+undici@7.30.1, undici@^7.19.0:
   version "7.30.1"
   resolved "https://registry.yarnpkg.com/undici/-/undici-7.30.1.tgz#360b3de104b94abc52729aa1a4a07e027aa71f73"
   integrity sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==
