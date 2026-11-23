@@ -601,18 +601,18 @@ function simctlDevice(info: DeviceInfo): SimctlDevice {
   };
 }
 
-function xcrunShimSource(options: { baseUrl: string; device: SimctlDevice }): string {
-  // Kept as one dependency-free file: Argent execs it for every simctl call.
-  // It handles this simulator and hands every other call to the real xcrun, so
-  // local simulators and devices keep working beside the remote one.
-  return `#!/usr/bin/env node
+// Argent execs this for every simctl call. It handles this simulator and hands
+// every other call to the real xcrun, so local simulators and devices keep
+// working beside the remote one. The Go SDK embeds the same script as
+// websocket/ios/shim/argent-xcrun.js; keep the two identical.
+const ARGENT_XCRUN_SHIM = `#!/usr/bin/env node
 const fs = require('node:fs');
 const http = require('node:http');
 const net = require('node:net');
 const { spawnSync } = require('node:child_process');
 
-const bridgeUrl = ${JSON.stringify(options.baseUrl)};
-const device = ${JSON.stringify(options.device)};
+const bridgeUrl = process.env.LIMRUN_ARGENT_BRIDGE_URL;
+const device = JSON.parse(process.env.LIMRUN_ARGENT_DEVICE || 'null');
 const udid = device.entry.udid;
 const realXcrun = process.env.LIMRUN_REAL_XCRUN || '/usr/bin/xcrun';
 const hasRealXcrun = fs.existsSync(realXcrun);
@@ -649,7 +649,7 @@ function post(route, body) {
   });
 }
 
-// \`simctl list devices --json\`: the local simulators plus the remote one.
+// \\\`simctl list devices --json\\\`: the local simulators plus the remote one.
 function listDevices() {
   let listing = { devices: {} };
   if (hasRealXcrun) {
@@ -716,6 +716,15 @@ function main() {
 
 main();
 `;
+
+function xcrunShimSource(options: { baseUrl: string; device: SimctlDevice }): string {
+  return ARGENT_XCRUN_SHIM.replace(
+    'const bridgeUrl = process.env.LIMRUN_ARGENT_BRIDGE_URL;',
+    `const bridgeUrl = ${JSON.stringify(options.baseUrl)};`,
+  ).replace(
+    "const device = JSON.parse(process.env.LIMRUN_ARGENT_DEVICE || 'null');",
+    `const device = ${JSON.stringify(options.device)};`,
+  );
 }
 
 function asError(error: unknown): Error {
