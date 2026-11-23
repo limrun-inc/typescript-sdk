@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.76.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.75.0...v0.76.0) (2026-11-23)
+
+
+### Features
+
+* **ios:** permissions, service restarts, keychain reset, raw HID usages and all orientations in the SDK and CLI ([#714](https://github.com/limrun-inc/typescript-sdk/issues/714)) ([82e62c5](https://github.com/limrun-inc/typescript-sdk/commit/82e62c5949bbc92ae035395dd12ec5040d9d7502))
+* **ios:** support large App Store screenshot models in the SDK and CLI ([#716](https://github.com/limrun-inc/typescript-sdk/issues/716)) ([bb35eae](https://github.com/limrun-inc/typescript-sdk/commit/bb35eae6011bb0af51b6e5189cbd000702287e9b))
+
+
+### Bug Fixes
+
+* **cli:** never replace an instance named by ID ([#703](https://github.com/limrun-inc/typescript-sdk/issues/703)) ([accf76c](https://github.com/limrun-inc/typescript-sdk/commit/accf76ccd4b54373d29794cf2ba9de85a221a0ad))
+
+
+### Chores
+
+* **cli:** release 0.59.0 with SDK 0.75.0 ([#711](https://github.com/limrun-inc/typescript-sdk/issues/711)) ([45770a5](https://github.com/limrun-inc/typescript-sdk/commit/45770a5f1a043d0828b2212f75354f343e3934bd))
+
 ## [0.75.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.74.0...v0.75.0) (2026-11-23)
 
 
