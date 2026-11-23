@@ -125,6 +125,8 @@ export type XcodeProjectConfig = {
    * discovery picks the wrong bundle.
    */
   artifactName?: string;
+  /** Recompile from a clean build folder for this invocation. */
+  clean?: boolean;
   /**
    * xcodebuild action. 'build' (default) produces one .app; with a simulator
    * attached it is installed there. 'build-for-testing' compiles the scheme's

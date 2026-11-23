@@ -32,6 +32,7 @@ import {
   parseBuildSettingEntries,
   type AppStoreUploadConfig,
   type XcodeBuildOptions,
+  type XcodeProjectConfig,
   type XcodeClient,
   type XcodeCloudSigningConfig,
   type XcodeCloudSigningMethod,
@@ -155,6 +156,7 @@ export default class XcodeBuild extends BaseCommand {
       description:
         "TTL of the uploaded asset as a Go duration (e.g. 24h, 30m). Defaults to 336h (14 days); each build upload pushes the asset's expiry that far out from the upload.",
     }),
+    clean: Flags.boolean({ description: 'Recompile from a clean Xcode build folder.' }),
     'artifact-name': Flags.string({
       description:
         'Full filename of the built app bundle including the .app extension, e.g. MyApp-dev.app. The server takes the artifact from this name in the built products directory verbatim, skipping artifact discovery. Use when the scheme name differs from the product name and the artifact is not found after a successful build.',
@@ -333,10 +335,11 @@ export default class XcodeBuild extends BaseCommand {
       const syncPath = args.path ?? process.cwd();
       const xcodeClient = await this.resolveXcodeClientForWork(target, requestedXcode);
 
-      const settings: Record<string, string> = {
-        ...(projectConfigFromFlags(flags) as Record<string, string>),
+      const settings: XcodeProjectConfig = {
+        ...projectConfigFromFlags(flags),
+        ...(flags.clean && { clean: true }),
       };
-      if (flags.sdk) settings.sdk = flags.sdk;
+      if (flags.sdk) settings.sdk = flags.sdk as NonNullable<XcodeProjectConfig['sdk']>;
       if (flags.ios && !flags.sdk) settings.sdk = 'iphonesimulator';
       if (flags['artifact-name']) {
         const artifactName = flags['artifact-name'];

@@ -91,29 +91,35 @@ describe.each(['iphoneos', 'appletvos', 'xros'])('%s App Store upload', (sdk) =>
   });
 });
 
-test.each([false, true])('passes expo-no-clean=%s to the SDK', async (noClean) => {
-  const { flags } = await parse(noClean ? ['--expo-no-clean'] : []);
-  const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
-    command: { on: jest.fn() },
-    stdout: { on: jest.fn() },
-    stderr: { on: jest.fn() },
-  });
-  const xcodebuild = jest.fn((_config: unknown, _options: import('@limrun/api').XcodeBuildOptions) => proc);
-  const command = Object.assign(Object.create(XcodeBuild.prototype), {
-    parse: async () => ({ args: { path: directory }, flags }),
-    setParsedFlags: jest.fn(),
-    withAuth: async (run: () => Promise<void>) => run(),
-    resolveXcodeTargetOrCreate: async () => ({ type: 'xcode', id: 'sandbox_test' }),
-    applyBuildCacheToTarget: jest.fn(),
-    resolveXcodeClientForWork: async () => ({ sync: async () => ({ bytesSent: 0 }), xcodebuild }),
-    info: jest.fn(),
-    isJsonEnabled: () => true,
-    outputEvent: jest.fn(),
-  });
-  await command.run();
-  expect(xcodebuild).toHaveBeenCalledTimes(1);
-  expect(xcodebuild.mock.calls[0]?.[1]?.reactNative).toEqual(noClean ? { expoNoClean: true } : undefined);
-});
+test.each([[], ['--expo-no-clean'], ['--clean'], ['--expo-no-clean', '--clean']].map((argv) => ({ argv })))(
+  'passes independent build and Expo clean flags $argv',
+  async ({ argv }) => {
+    const { flags } = await parse(argv);
+    const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
+      command: { on: jest.fn() },
+      stdout: { on: jest.fn() },
+      stderr: { on: jest.fn() },
+    });
+    const xcodebuild = jest.fn((_config: unknown, _options: import('@limrun/api').XcodeBuildOptions) => proc);
+    const command = Object.assign(Object.create(XcodeBuild.prototype), {
+      parse: async () => ({ args: { path: directory }, flags }),
+      setParsedFlags: jest.fn(),
+      withAuth: async (run: () => Promise<void>) => run(),
+      resolveXcodeTargetOrCreate: async () => ({ type: 'xcode', id: 'sandbox_test' }),
+      applyBuildCacheToTarget: jest.fn(),
+      resolveXcodeClientForWork: async () => ({ sync: async () => ({ bytesSent: 0 }), xcodebuild }),
+      info: jest.fn(),
+      isJsonEnabled: () => true,
+      outputEvent: jest.fn(),
+    });
+    await command.run();
+    expect(xcodebuild).toHaveBeenCalledTimes(1);
+    expect(xcodebuild.mock.calls[0]?.[0]).toEqual(argv.includes('--clean') ? { clean: true } : undefined);
+    expect(xcodebuild.mock.calls[0]?.[1]?.reactNative).toEqual(
+      argv.includes('--expo-no-clean') ? { expoNoClean: true } : undefined,
+    );
+  },
+);
 
 test('rejects expo-no-clean with XcodeGen before authenticating', async () => {
   const parsed = await parse(['--expo-no-clean', '--xcodegen-spec', 'project.yml']);
