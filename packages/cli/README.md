@@ -169,6 +169,7 @@ This avoids relying on locally cached "last created" state and keeps the target 
 - [iOS](#ios) — Create, manage, and interact with iOS instances
 - [Android](#android) — Create, manage, and interact with Android instances
 - [Xcode](#xcode) — Create and manage Xcode sandbox instances
+- [macOS](#macos) — Create and manage macOS virtual machines
 - [Assets](#assets) — Upload and download files (APKs, IPAs, etc.)
 - [Sessions](#sessions) — Persistent connections for fast, interactive device control
 - [Xcode Build Pipeline](#xcode-build-pipeline) — Sync code and run xcodebuild remotely
@@ -761,6 +762,32 @@ wins over `--ignore`; `--ignore` wins over built-in `.env` and `.xcconfig`
 force-includes; built-in exclusions and `.gitignore` rules then apply. Match
 an ignored parent directory to prune its subtree. Without `--ignore`, Xcode
 sync continues to include gitignored `.env`, `.env.*`, and `.xcconfig` files.
+
+---
+
+### macOS
+
+A macOS instance is a full macOS virtual machine. Open its console URL to see and control the desktop.
+
+```bash
+lim macos create        # Create a macOS instance and wait until it is ready
+lim macos list          # List ready macOS instances (--all for every state)
+lim macos get [ID]      # Show an instance and its console URL
+lim macos delete [ID]   # Delete an instance and discard its disk
+```
+
+`get` and `delete` default to the last macOS instance created in the current workspace.
+
+**Flags for `macos create`:**
+
+| Flag                           | Description                                                           |
+| ------------------------------ | --------------------------------------------------------------------- |
+| `--jurisdiction <value>`       | Create only in this jurisdiction: `us`, `eu` or `as`                  |
+| `--inactivity-timeout <value>` | Delete after this long without input or API calls (e.g. `30m`)        |
+| `--hard-timeout <value>`       | Delete after this long regardless of activity (e.g. `3h`)             |
+| `--display-name <value>`       | Name shown in listings and the console                                |
+| `--label <key=value>`          | Metadata label, repeatable                                            |
+| `--reuse-if-exists`            | Return an existing instance with the same labels instead of a new one |
 
 ---
 

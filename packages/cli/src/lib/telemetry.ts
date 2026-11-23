@@ -158,7 +158,7 @@ export function telemetryIntentForCommand(
   flags: Record<string, unknown>,
 ): TelemetryIntent | undefined {
   const [noun, verb] = commandId.split(/[: ]+/).filter(Boolean);
-  if (noun && verb === 'create' && ['ios', 'android', 'xcode', 'gradle'].includes(noun)) {
+  if (noun && verb === 'create' && ['ios', 'android', 'xcode', 'gradle', 'macos'].includes(noun)) {
     const createKind =
       (noun === 'xcode' && flags['ios']) || (noun === 'ios' && flags['xcode']) ? 'ios_with_xcode' : noun;
     return {
