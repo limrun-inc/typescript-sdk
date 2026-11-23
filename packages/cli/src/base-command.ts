@@ -100,7 +100,8 @@ export abstract class BaseCommand extends Command {
       default: false,
     }),
     create: Flags.boolean({
-      description: 'Create a replacement instance automatically if the target instance is not found.',
+      description:
+        'Create a replacement instance automatically if the remembered instance is not found. An instance named with --id or an env pin is never replaced.',
       default: true,
       allowNo: true,
     }),
@@ -176,6 +177,12 @@ export abstract class BaseCommand extends Command {
   /** Where resolveXcodeTarget found its target; only a remembered one may be forgotten. */
   private _lastResolvedXcodeSource?: 'explicit' | 'env' | 'memory';
   private _overrideInstanceId?: string;
+  /**
+   * Remembered instances a resolver fell back to. A 404 replaces only these and instances this run
+   * created. Any other target came from an ID or an env pin, the caller's choice, and replacing it
+   * would run the work on an instance the caller never picked. Unknown means not replaced.
+   */
+  private _replaceableInstanceIds = new Set<string>();
   private _createRetryCount = 0;
   private _intentCaptured = false;
   // Server-side instances THIS invocation created, so a path that abandons one
@@ -340,6 +347,9 @@ export abstract class BaseCommand extends Command {
         if (instanceId) {
           stopDaemon(instanceId);
           clearLastInstanceId(instanceId);
+          // Decide before the cleanup below, which drops a created instance from the created set.
+          const replaceable =
+            this._replaceableInstanceIds.has(instanceId) || this.wasCreatedThisRun(instanceId);
           // Release an instance THIS invocation created so it doesn't keep
           // billing: eagerly when the error names it as gone, otherwise
           // only after a replacement is secured, because a 404 attributed
@@ -350,6 +360,11 @@ export abstract class BaseCommand extends Command {
             await this.deleteCreatedInstance(explicitId);
           }
           if (options.createReplacement !== false && this.shouldAutoCreateOnNotFound()) {
+            if (!replaceable) {
+              this.error(
+                `Instance ${instanceId} was not found; it may have ended. An instance named with --id or an env pin is never replaced. Create a new one, or rerun without the ID to let the command create one.`,
+              );
+            }
             const replacement = await this.createReplacementInstance(instanceId);
             if (replacement) {
               await this.deleteCreatedInstance(instanceId);
@@ -468,6 +483,7 @@ export abstract class BaseCommand extends Command {
     const instance = loadLastAndroidInstance();
     if (instance) {
       this._lastResolvedInstanceId = instance.id;
+      this._replaceableInstanceIds.add(instance.id);
       return instance;
     }
 
@@ -525,6 +541,7 @@ export abstract class BaseCommand extends Command {
     const instance = loadLastIosInstance();
     if (instance) {
       this._lastResolvedInstanceId = instance.id;
+      this._replaceableInstanceIds.add(instance.id);
       return instance;
     }
 
@@ -594,6 +611,7 @@ export abstract class BaseCommand extends Command {
     if (ios) {
       this._lastResolvedExpectedType = 'ios';
       this._lastResolvedInstanceId = ios.id;
+      this._replaceableInstanceIds.add(ios.id);
       return ios;
     }
 
@@ -601,6 +619,7 @@ export abstract class BaseCommand extends Command {
     if (android) {
       this._lastResolvedExpectedType = 'android';
       this._lastResolvedInstanceId = android.id;
+      this._replaceableInstanceIds.add(android.id);
       return android;
     }
 
@@ -635,6 +654,7 @@ export abstract class BaseCommand extends Command {
     const target = loadLastXcodeInstance();
     if (target) {
       this._lastResolvedInstanceId = target.id;
+      this._replaceableInstanceIds.add(target.id);
       this._lastResolvedXcodeSource = 'memory';
       return target;
     }
@@ -681,6 +701,7 @@ export abstract class BaseCommand extends Command {
     // Explicit instance IDs above keep their existing configuration.
     if (target && !this.autoCreateInactivityTimeout()) {
       this._lastResolvedInstanceId = target.id;
+      this._replaceableInstanceIds.add(target.id);
       return target;
     }
 
@@ -750,6 +771,7 @@ export abstract class BaseCommand extends Command {
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
     // the same instance. Only a dead target falls through to creation.
     if (target && !forceFresh) {
+      this._replaceableInstanceIds.add(target.id);
       try {
         const xcodeClient = await this.resolveXcodeClient(target);
         const status = await xcodeClient.getSimulator();
@@ -1499,6 +1521,7 @@ export abstract class BaseCommand extends Command {
     const target = loadLastGradleInstance();
     if (target) {
       this._lastResolvedInstanceId = target.id;
+      this._replaceableInstanceIds.add(target.id);
       return target;
     }
     return null;
