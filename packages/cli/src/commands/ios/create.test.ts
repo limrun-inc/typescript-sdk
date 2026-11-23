@@ -1,3 +1,4 @@
+import { Parser } from '@oclif/core';
 import IosCreate from './create';
 import { iosDeviceSelection } from '../../lib/ios-device-selection';
 
@@ -71,6 +72,13 @@ test('iOS 27 iPhone Duo selection maps to separate OS and model fields', () => {
     clues: [{ kind: 'OSVersion', osVersion: '27' }],
     model: 'iphone-duo',
   });
+});
+
+test.each(['iphone-16-pro-max', 'ipad-pro-13'])('creates a simulator with --model %s', async (model) => {
+  const { flags } = await Parser.parse(['--model', model], { flags: IosCreate.flags });
+  const { command, create } = setup({ model: flags.model });
+  await command.run();
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: expect.objectContaining({ model }) }));
 });
 
 test('iOS create exposes the supported iOS versions', () => {

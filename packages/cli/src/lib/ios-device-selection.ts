@@ -9,6 +9,8 @@ export const IOS_MODELS: NonNullable<IosInstanceCreateParams.Spec['model']>[] = 
   'iphone',
   'iphone-se',
   'iphone-17e',
+  'iphone-16-pro-max',
+  'ipad-pro-13',
   'iphone-duo',
   'ipad',
   'watch',
