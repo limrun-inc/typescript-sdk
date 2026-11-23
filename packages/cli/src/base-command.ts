@@ -25,10 +25,12 @@ import {
   registerCreatedInstance,
   loadGradleInstanceCache,
   loadLastGradleInstance,
+  loadLastMacosInstance,
   type LastAndroidInstance,
   type LastIosInstance,
   type LastXcodeInstance,
   type LastGradleInstance,
+  type LastMacosInstance,
 } from './lib/config';
 import { isLoginRequiredError, login } from './lib/auth';
 import { getScopeKey, isGlobalScopeKey, setScopeOverride } from './lib/scope';
@@ -60,7 +62,7 @@ const VERSION = require('../package.json').version;
 // Full instance-id shape only: prefix_region_suffix with a long TypeID suffix.
 // TypeIDs are lowercase, so no /i flag; this avoids matching bare prefix words
 // in error text (e.g. GRADLE_USER_HOME, gradle_wrapper) as if they were ids.
-const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox|gradle)_[a-z0-9]+_[a-z0-9]{20,}\b/;
+const INSTANCE_ID_PATTERN = /\b(?:ios|android|xcode|sandbox|gradle|macos)_[a-z0-9]+_[a-z0-9]{20,}\b/;
 type XcodeTarget = LastXcodeInstance;
 type XcodeReplacementIntent = 'standalone' | 'simulator-backed';
 /** The products whose disk snapshots these helpers follow. */
@@ -1483,6 +1485,28 @@ export abstract class BaseCommand extends Command {
         `Created Xcode instance ${instance.metadata.id}, but failed to load it from local cache.`,
       );
     }
+    return target;
+  }
+
+  // macOS commands never create an instance on their own, so a target is an
+  // explicit id or the last macOS instance created in this workspace.
+  protected resolveMacosTarget(providedId: string | undefined): LastMacosInstance {
+    const id = this._overrideInstanceId ?? providedId;
+    if (id) {
+      if (!id.startsWith('macos_')) {
+        throw new Error(`Expected a macOS instance, got ${id}`);
+      }
+      this._lastResolvedInstanceId = id;
+      return { id, type: 'macos' };
+    }
+    const target = loadLastMacosInstance();
+    if (!target) {
+      throw new Error(
+        `No instance ID provided and no recent macOS instance found${this.scopeSuffix()}.\n` +
+          'Provide an instance ID or create one first with: lim macos create',
+      );
+    }
+    this._lastResolvedInstanceId = target.id;
     return target;
   }
 
