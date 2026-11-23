@@ -178,10 +178,11 @@ export abstract class BaseCommand extends Command {
   private _lastResolvedXcodeSource?: 'explicit' | 'env' | 'memory';
   private _overrideInstanceId?: string;
   /**
-   * Instances the caller named with an ID or an env pin. A 404 on one fails the command instead of
-   * creating a replacement, which would run the work on an instance the caller never chose.
+   * Remembered instances a resolver fell back to. A 404 replaces only these and instances this run
+   * created. Any other target came from an ID or an env pin, the caller's choice, and replacing it
+   * would run the work on an instance the caller never picked. Unknown means not replaced.
    */
-  private _namedInstanceIds = new Set<string>();
+  private _replaceableInstanceIds = new Set<string>();
   private _createRetryCount = 0;
   private _intentCaptured = false;
   // Server-side instances THIS invocation created, so a path that abandons one
@@ -355,12 +356,12 @@ export abstract class BaseCommand extends Command {
           if (explicitId) {
             await this.deleteCreatedInstance(explicitId);
           }
-          if (this._namedInstanceIds.has(instanceId)) {
-            this.error(
-              `Instance ${instanceId} was not found; it may have ended. An instance named with --id or an env pin is never replaced. Create a new one, or rerun without the ID to let the command create one.`,
-            );
-          }
           if (options.createReplacement !== false && this.shouldAutoCreateOnNotFound()) {
+            if (!this._replaceableInstanceIds.has(instanceId) && !this.wasCreatedThisRun(instanceId)) {
+              this.error(
+                `Instance ${instanceId} was not found; it may have ended. An instance named with --id or an env pin is never replaced. Create a new one, or rerun without the ID to let the command create one.`,
+              );
+            }
             const replacement = await this.createReplacementInstance(instanceId);
             if (replacement) {
               await this.deleteCreatedInstance(instanceId);
@@ -467,21 +468,19 @@ export abstract class BaseCommand extends Command {
     if (id) {
       const instance = this.androidInstanceFromId(id);
       this._lastResolvedInstanceId = instance.id;
-      // An ID the caller named is never swapped for a replacement when it is gone.
-      if (!this._overrideInstanceId) this._namedInstanceIds.add(instance.id);
       return instance;
     }
 
     const envTarget = envInstanceTarget('android');
     if (envTarget) {
       this._lastResolvedInstanceId = envTarget.id;
-      this._namedInstanceIds.add(envTarget.id);
       return envTarget;
     }
 
     const instance = loadLastAndroidInstance();
     if (instance) {
       this._lastResolvedInstanceId = instance.id;
+      this._replaceableInstanceIds.add(instance.id);
       return instance;
     }
 
@@ -527,21 +526,19 @@ export abstract class BaseCommand extends Command {
     if (id) {
       const instance = this.iosInstanceFromId(id);
       this._lastResolvedInstanceId = instance.id;
-      // An ID the caller named is never swapped for a replacement when it is gone.
-      if (!this._overrideInstanceId) this._namedInstanceIds.add(instance.id);
       return instance;
     }
 
     const envTarget = envInstanceTarget('ios');
     if (envTarget) {
       this._lastResolvedInstanceId = envTarget.id;
-      this._namedInstanceIds.add(envTarget.id);
       return envTarget;
     }
 
     const instance = loadLastIosInstance();
     if (instance) {
       this._lastResolvedInstanceId = instance.id;
+      this._replaceableInstanceIds.add(instance.id);
       return instance;
     }
 
@@ -597,7 +594,6 @@ export abstract class BaseCommand extends Command {
     if (envIos) {
       this._lastResolvedExpectedType = 'ios';
       this._lastResolvedInstanceId = envIos.id;
-      this._namedInstanceIds.add(envIos.id);
       return envIos;
     }
 
@@ -605,7 +601,6 @@ export abstract class BaseCommand extends Command {
     if (envAndroid) {
       this._lastResolvedExpectedType = 'android';
       this._lastResolvedInstanceId = envAndroid.id;
-      this._namedInstanceIds.add(envAndroid.id);
       return envAndroid;
     }
 
@@ -613,6 +608,7 @@ export abstract class BaseCommand extends Command {
     if (ios) {
       this._lastResolvedExpectedType = 'ios';
       this._lastResolvedInstanceId = ios.id;
+      this._replaceableInstanceIds.add(ios.id);
       return ios;
     }
 
@@ -620,6 +616,7 @@ export abstract class BaseCommand extends Command {
     if (android) {
       this._lastResolvedExpectedType = 'android';
       this._lastResolvedInstanceId = android.id;
+      this._replaceableInstanceIds.add(android.id);
       return android;
     }
 
@@ -640,7 +637,6 @@ export abstract class BaseCommand extends Command {
     if (providedId) {
       const target = this.xcodeTargetFromId(providedId);
       this._lastResolvedInstanceId = target.id;
-      this._namedInstanceIds.add(target.id);
       this._lastResolvedXcodeSource = 'explicit';
       return target;
     }
@@ -648,7 +644,6 @@ export abstract class BaseCommand extends Command {
     const envTarget = envInstanceTarget('xcode');
     if (envTarget) {
       this._lastResolvedInstanceId = envTarget.id;
-      this._namedInstanceIds.add(envTarget.id);
       this._lastResolvedXcodeSource = 'env';
       return envTarget;
     }
@@ -656,6 +651,7 @@ export abstract class BaseCommand extends Command {
     const target = loadLastXcodeInstance();
     if (target) {
       this._lastResolvedInstanceId = target.id;
+      this._replaceableInstanceIds.add(target.id);
       this._lastResolvedXcodeSource = 'memory';
       return target;
     }
@@ -680,8 +676,6 @@ export abstract class BaseCommand extends Command {
     if (id) {
       const target = this.xcodeTargetFromId(id);
       this._lastResolvedInstanceId = target.id;
-      // An ID the caller named is never swapped for a replacement when it is gone.
-      if (!this._overrideInstanceId) this._namedInstanceIds.add(target.id);
       return target;
     }
 
@@ -696,7 +690,6 @@ export abstract class BaseCommand extends Command {
         );
       }
       this._lastResolvedInstanceId = envTarget.id;
-      this._namedInstanceIds.add(envTarget.id);
       return envTarget;
     }
 
@@ -705,6 +698,7 @@ export abstract class BaseCommand extends Command {
     // Explicit instance IDs above keep their existing configuration.
     if (target && !this.autoCreateInactivityTimeout()) {
       this._lastResolvedInstanceId = target.id;
+      this._replaceableInstanceIds.add(target.id);
       return target;
     }
 
@@ -739,8 +733,6 @@ export abstract class BaseCommand extends Command {
         throw new Error(`--ios requires an Xcode instance with an attached simulator, got ${id}`);
       }
       this._lastResolvedInstanceId = target.id;
-      // An ID the caller named is never swapped for a replacement when it is gone.
-      if (!this._overrideInstanceId) this._namedInstanceIds.add(target.id);
       return target;
     }
 
@@ -765,7 +757,6 @@ export abstract class BaseCommand extends Command {
         );
       }
       this._lastResolvedInstanceId = envTarget.id;
-      this._namedInstanceIds.add(envTarget.id);
       return envTarget;
     }
 
@@ -777,6 +768,7 @@ export abstract class BaseCommand extends Command {
     // `lim xcode sync` or `lim xcode create` keeps all commands pointed at
     // the same instance. Only a dead target falls through to creation.
     if (target && !forceFresh) {
+      this._replaceableInstanceIds.add(target.id);
       try {
         const xcodeClient = await this.resolveXcodeClient(target);
         const status = await xcodeClient.getSimulator();
@@ -1508,8 +1500,6 @@ export abstract class BaseCommand extends Command {
     if (id) {
       const target = this.gradleTargetFromId(id);
       this._lastResolvedInstanceId = target.id;
-      // An ID the caller named is never swapped for a replacement when it is gone.
-      if (!this._overrideInstanceId) this._namedInstanceIds.add(target.id);
       return target;
     }
     // An env-pinned target is as explicit as --id: creation-time settings
@@ -1523,12 +1513,12 @@ export abstract class BaseCommand extends Command {
         );
       }
       this._lastResolvedInstanceId = envTarget.id;
-      this._namedInstanceIds.add(envTarget.id);
       return envTarget;
     }
     const target = loadLastGradleInstance();
     if (target) {
       this._lastResolvedInstanceId = target.id;
+      this._replaceableInstanceIds.add(target.id);
       return target;
     }
     return null;
