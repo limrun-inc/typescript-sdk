@@ -9,6 +9,7 @@ import {
   type LogLevel,
 } from './daemon-client-shared';
 import { MacosInstances, type MacosInstance } from './macos-instances';
+import type { MacosSnapshotFollowOptions, MacosSnapshotFollowResult } from '../macos-snapshot';
 
 export type MacosCreateClientParams = { logLevel?: LogLevel } & (
   | { instance: MacosInstance }
@@ -86,18 +87,62 @@ export interface MacosClient {
 
   /** Press at `from`, move to `to` over `durationMs`, and release. */
   drag(from: MacosPoint, to: MacosPoint, options?: { durationMs?: number }): Promise<void>;
+
+  /**
+   * Start restoring the disk snapshot the instance was created with (`spec.snapshot`). The
+   * instance only restores when a client asks, so call this once it is ready and before using the
+   * guest; asking again changes nothing. Returns the instance's snapshot status as it stands.
+   * `macosInstances.restoreSnapshot` also waits for the restore to finish.
+   */
+  startSnapshotRestore(): Promise<MacosDaemonSnapshotStatus>;
+}
+
+/** The snapshot status a macOS instance reports itself. */
+export interface MacosDaemonSnapshotStatus {
+  restore: { phase: string; reason?: string; message?: string; key?: string };
+  save: { phase: string; reason?: string; message?: string };
 }
 
 declare module './macos-instances' {
   interface MacosInstances {
     /** Create a client that works inside a running macOS instance. */
     createClient(params: MacosCreateClientParams): Promise<MacosClient>;
+    /**
+     * Restore the disk snapshot a ready instance was created with, and wait until the restore
+     * ends. The platform finds the snapshot, but only a client starts the restore; one no client
+     * starts in time is skipped and the instance runs without it.
+     */
+    restoreSnapshot(
+      instance: MacosInstance,
+      options?: MacosSnapshotFollowOptions,
+    ): Promise<MacosSnapshotFollowResult>;
   }
 }
 
 // The method body lives in a subclass and is grafted onto the generated class,
 // as for the other instance types, so generated files need no patch.
 class MacosInstancesHelpers extends MacosInstances {
+  override async restoreSnapshot(
+    instance: MacosInstance,
+    options: MacosSnapshotFollowOptions = {},
+  ): Promise<MacosSnapshotFollowResult> {
+    const client = await this.createClient({ instance, logLevel: 'none' });
+    // Subscribed before the start, so a restore that is over in seconds is still seen.
+    let opened = () => {};
+    const open = new Promise<void>((resolve) => (opened = resolve));
+    const following = this.followSnapshot(instance.metadata.id, {
+      ...options,
+      side: 'restore',
+      onOpen: () => {
+        opened();
+        options.onOpen?.();
+      },
+    });
+    await Promise.race([open, following.then(() => {})]);
+    await client.startSnapshotRestore();
+    return following;
+  }
+
   override async createClient(params: MacosCreateClientParams): Promise<MacosClient> {
     let apiUrl: string;
     let token: string;
@@ -182,6 +227,11 @@ class MacosInstancesHelpers extends MacosInstances {
         return post('/scroll', { dx: dx ?? 0, dy: dy ?? 0, ...(at && { x: at.x, y: at.y }) });
       },
 
+      async startSnapshotRestore(): Promise<MacosDaemonSnapshotStatus> {
+        const response = await request('/snapshot/restore', { method: 'POST', body: {} });
+        return (await response.json()) as MacosDaemonSnapshotStatus;
+      },
+
       drag(from, to, options) {
         return post('/drag', {
           fromX: from.x,
@@ -196,3 +246,4 @@ class MacosInstancesHelpers extends MacosInstances {
 }
 
 MacosInstances.prototype.createClient = MacosInstancesHelpers.prototype.createClient;
+MacosInstances.prototype.restoreSnapshot = MacosInstancesHelpers.prototype.restoreSnapshot;

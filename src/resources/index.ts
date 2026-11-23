@@ -134,6 +134,7 @@ export {
   type MacosPoint,
   type MacosModifier,
   type MacosSshAccess,
+  type MacosDaemonSnapshotStatus,
 } from './macos-instances-helpers';
 
 export {
