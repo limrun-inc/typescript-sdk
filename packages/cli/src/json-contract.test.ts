@@ -104,6 +104,11 @@ beforeEach(() => {
       'stopRecording',
       'startRecordingSession',
       'stopRecordingSession',
+      'setPermission',
+      'getPermission',
+      'resetKeychain',
+      'restartServices',
+      'setOrientation',
     ].map((name) => [name, jest.fn().mockResolvedValue(undefined)]),
   );
   client.startRecordingSession!.mockResolvedValue('run-1');
@@ -215,6 +220,59 @@ describe.each([false, true])('device actions with daemon=%s', (session) => {
   test('keyboard toggle identifies the instance without inventing visibility', async () => {
     await command('ios/toggle-keyboard').run();
     expect(JSON.parse(stdout)).toEqual({ ok: true, instanceId: target.id });
+  });
+  test('iOS permissions report the app, service and status', async () => {
+    await command('ios/permission/set', {
+      bundle_id: 'com.example.app',
+      service: 'photos',
+      status: 'limited',
+    }).run();
+    expect(client.setPermission).toHaveBeenCalledWith('com.example.app', 'photos', 'limited');
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      bundleId: 'com.example.app',
+      service: 'photos',
+      status: 'limited',
+    });
+    stdout = '';
+    client.getPermission!.mockResolvedValue('denied');
+    await command('ios/permission/get', { bundle_id: 'com.example.app', service: 'camera' }).run();
+    expect(JSON.parse(stdout)).toEqual({
+      instanceId: target.id,
+      bundleId: 'com.example.app',
+      service: 'camera',
+      status: 'denied',
+    });
+  });
+  test('iOS keychain reset, service restarts and orientation identify the instance', async () => {
+    await command('ios/keychain/reset').run();
+    expect(client.resetKeychain).toHaveBeenCalled();
+    expect(JSON.parse(stdout)).toEqual({ ok: true, instanceId: target.id });
+    stdout = '';
+    const restart = command('ios/restart-services');
+    Object.assign(restart, {
+      parse: async () => ({
+        argv: ['com.apple.SpringBoard', 'com.apple.tccd'],
+        args: {},
+        flags: { json: true },
+      }),
+    });
+    await restart.run();
+    expect(client.restartServices).toHaveBeenCalledWith(['com.apple.SpringBoard', 'com.apple.tccd']);
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      services: ['com.apple.SpringBoard', 'com.apple.tccd'],
+    });
+    stdout = '';
+    await command('ios/set-orientation', { orientation: 'portrait-upside-down' }).run();
+    expect(client.setOrientation).toHaveBeenCalledWith('PortraitUpsideDown');
+    expect(JSON.parse(stdout)).toEqual({
+      ok: true,
+      instanceId: target.id,
+      orientation: 'portrait-upside-down',
+    });
   });
   test.each(['android', 'ios'])('%s key result includes modifiers', async (platform) => {
     await command(`${platform}/press-key`, { key: 'a' }, { modifier: ['shift', 'control'] }).run();

@@ -201,7 +201,7 @@ Available action types:
 - Scroll the screen: type=scroll,direction=down,pixels=300,coordinate=[200,400],momentum=0.2
 - Toggle the software keyboard: type=toggleKeyboard
 - Open a URL or deep link: type=openUrl,url=https://example.com
-- Set device orientation: type=setOrientation,orientation=Landscape
+- Set device orientation: type=setOrientation,orientation=LandscapeRight (or Portrait, PortraitUpsideDown, LandscapeLeft)
 - Wait before the next action: type=wait,durationMs=1000
 - Start a touch gesture: type=touchDown,x=100,y=200
 - Move a touch gesture: type=touchMove,x=120,y=220
@@ -210,6 +210,8 @@ Available action types:
 - Release a raw key code: type=keyUp,keyCode=4
 - Press a hardware button down: type=buttonDown,button=home
 - Release a hardware button: type=buttonUp,button=home
+- Press any HID usage down, e.g. Brightness Increment: type=usageDown,usagePage=12,usage=111
+- Release a HID usage: type=usageUp,usagePage=12,usage=111
 
 Use JSON values for complex fields like selector, modifiers, and coordinate.`,
       multiple: true,
