@@ -190,7 +190,10 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
       results[my] = await fn(item);
     }
   });
-  await Promise.all(workers);
+  // All writers must finish before the enclosing sync removes its staging directory.
+  for (const result of await Promise.allSettled(workers)) {
+    if (result.status === 'rejected') throw result.reason;
+  }
   return results;
 }
 
@@ -222,16 +225,16 @@ async function httpFolderSyncBatch(
 
   async function* gen(): AsyncGenerator<Buffer> {
     yield head;
-    for (const p of payloadFiles) {
+    for (const [index, p] of payloadFiles.entries()) {
+      const descriptor = meta.payloads[index]!;
       const fd = await fs.promises.open(p.filePath, 'r');
       try {
-        const st = await fd.stat();
         let offset = 0;
-        while (offset < st.size) {
-          const len = Math.min(256 * 1024, st.size - offset);
+        while (offset < descriptor.length) {
+          const len = Math.min(256 * 1024, descriptor.length - offset);
           const buf = Buffer.allocUnsafe(len);
           const { bytesRead } = await fd.read(buf, 0, len, offset);
-          if (bytesRead <= 0) break;
+          if (bytesRead === 0) throw new Error(`incomplete staged payload for ${descriptor.path}`);
           offset += bytesRead;
           yield buf.subarray(0, bytesRead);
         }
@@ -544,30 +547,21 @@ async function cachePut(
   cacheRoot: string,
   relPath: string,
   srcFile: string,
-  linkTarget?: string,
-  checkedDirs?: Set<string>,
+  linkTarget: string | undefined,
+  checkedDirs: Set<string>,
 ): Promise<void> {
   const segments = relPath.split('/');
   const dst = path.join(cacheRoot, segments.join(path.sep));
-  // Remove any ancestor that is not a real directory before mkdir/write: a
-  // path that previously synced as a symlink (or a regular file that became
-  // a directory) leaves a stale cache inode, and writing children through a
-  // symlink would corrupt the link target's cached entries while mkdir over
-  // a file throws after the server already applied. Only relevant when
-  // symlink sync is on; the caller passes checkedDirs (which also memoizes
-  // ancestors already confirmed real, so the sorted walk skips shared
-  // prefixes) then and omits it otherwise to skip the sweep entirely.
-  if (checkedDirs) {
-    let ancestor = cacheRoot;
-    for (let i = 0; i < segments.length - 1; i++) {
-      ancestor = path.join(ancestor, segments[i]!);
-      if (checkedDirs.has(ancestor)) continue;
-      const ast = await fs.promises.lstat(ancestor).catch(() => null);
-      if (ast && !ast.isDirectory()) {
-        await fs.promises.rm(ancestor, { recursive: true, force: true });
-      } else if (ast) {
-        checkedDirs.add(ancestor);
-      }
+  // A previous sync may have stored a file or symlink where we now need a directory.
+  let ancestor = cacheRoot;
+  for (const segment of segments.slice(0, -1)) {
+    ancestor = path.join(ancestor, segment);
+    if (checkedDirs.has(ancestor)) continue;
+    const st = await fs.promises.lstat(ancestor).catch(() => null);
+    if (st && !st.isDirectory()) {
+      await fs.promises.rm(ancestor, { recursive: true, force: true });
+    } else if (st) {
+      checkedDirs.add(ancestor);
     }
   }
   await fs.promises.mkdir(path.dirname(dst), { recursive: true });
@@ -587,6 +581,23 @@ async function cachePut(
 
 function cacheGet(cacheRoot: string, relPath: string): string {
   return path.join(cacheRoot, relPath.split('/').join(path.sep));
+}
+
+// lstat follows intermediate symlinks. A child reached through one belongs to
+// the old link target and cannot serve as a basis for the new directory.
+async function cacheBasisStat(cacheRoot: string, relPath: string, directories: Map<string, boolean>) {
+  let ancestor = cacheRoot;
+  for (const segment of relPath.split('/').slice(0, -1)) {
+    ancestor = path.join(ancestor, segment);
+    let isDirectory = directories.get(ancestor);
+    if (isDirectory === undefined) {
+      const st = await fs.promises.lstat(ancestor).catch(() => null);
+      isDirectory = st?.isDirectory() ?? false;
+      directories.set(ancestor, isDirectory);
+    }
+    if (!isDirectory) return null;
+  }
+  return fs.promises.lstat(cacheGet(cacheRoot, relPath)).catch(() => null);
 }
 
 export async function syncFolder(
@@ -701,7 +712,24 @@ async function syncFolderOnce(
   localFolderPath: string,
   opts: FolderSyncOptions,
   reason?: string,
-  attempt = 0,
+): Promise<SyncFolderResult> {
+  for (let attempt = 0; ; attempt++) {
+    const stagingDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limrun-sync-'));
+    try {
+      return await syncStagedFolder(localFolderPath, opts, stagingDir, reason);
+    } catch (err) {
+      if (attempt !== 0 || !isENOENT(err)) throw err;
+    } finally {
+      await fs.promises.rm(stagingDir, { recursive: true, force: true });
+    }
+  }
+}
+
+async function syncStagedFolder(
+  localFolderPath: string,
+  opts: FolderSyncOptions,
+  stagingDir: string,
+  reason?: string,
 ): Promise<SyncFolderResult> {
   const totalStart = nowMs();
   const log = opts.log ?? noopLogger;
@@ -724,17 +752,19 @@ async function syncFolderOnce(
   let bytesSentDelta = 0;
   let httpSendMsTotal = 0;
   let deltaEncodeMsTotal = 0;
-  type EncodedPayload = { payload: FolderSyncHttpPayload; filePath: string; cleanupDir?: string };
+  type EncodedPayload = { payload: FolderSyncHttpPayload; filePath: string };
 
   // Build payload list by comparing against local basis cache (single-flight/watch assumes server matches cache).
   // lstat, never stat/existsSync: those follow symlinks and misreport a
   // basis symlink (dangling or pointing at another cached file) as the
   // file itself.
   const encodeLimit = concurrencyLimit();
+  const basisDirectories = new Map<string, boolean>();
   const changed: FileEntry[] = [];
+  const deltaBasisHashes = new Map<FileEntry, string>();
   for (const f of allFiles) {
     const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    const basisStat = await fs.promises.lstat(basisPath).catch(() => null);
+    const basisStat = await cacheBasisStat(opts.basisCacheDir, f.path, basisDirectories);
     if (!basisStat) {
       changed.push(f);
       continue;
@@ -756,7 +786,10 @@ async function syncFolderOnce(
     }
     const basisSha = await sha256FileHex(basisPath);
     if (basisSha !== f.sha256.toLowerCase()) {
+      deltaBasisHashes.set(f, basisSha);
       changed.push(f);
+    } else {
+      f.size = basisStat.size;
     }
   }
 
@@ -766,13 +799,24 @@ async function syncFolderOnce(
   // every path that actually shipped this sync.
   const changedPaths = new Set(changed.map((f) => f.path));
 
+  // Full uploads, deltas, retries and the next basis must describe the same bytes.
+  const staged = new Set<FileEntry>();
+  let nextFile = 0;
+  async function stage(entry: FileEntry, source: string) {
+    const copy = path.join(stagingDir, String(nextFile++));
+    await fs.promises.copyFile(source, copy, fs.constants.COPYFILE_FICLONE);
+    entry.absPath = copy;
+    entry.size = (await fs.promises.stat(copy)).size;
+    entry.sha256 = await sha256FileHex(copy);
+    staged.add(entry);
+  }
+
   const encodedPayloads = await mapLimit(changedFiles, encodeLimit, async (f): Promise<EncodedPayload> => {
-    const basisPath = cacheGet(opts.basisCacheDir, f.path);
-    const basisStat =
-      f.size >= MIN_XDELTA_TARGET_BYTES ? await fs.promises.lstat(basisPath).catch(() => null) : null;
-    if (basisStat?.isFile()) {
-      const basisSha = await sha256FileHex(basisPath);
-      const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'limulator-xdelta3-'));
+    await stage(f, f.absPath);
+    const basisSha = deltaBasisHashes.get(f);
+    if (basisSha !== undefined && f.size >= MIN_XDELTA_TARGET_BYTES) {
+      const basisPath = cacheGet(opts.basisCacheDir, f.path);
+      const tmpDir = await fs.promises.mkdtemp(path.join(stagingDir, 'delta-'));
       const patchPath = path.join(tmpDir, 'patch.xdelta3');
       const encodeStart = nowMs();
       const patchSize = await encodeXdelta3Patch(
@@ -798,7 +842,6 @@ async function syncFolderOnce(
             length: patchSize,
           },
           filePath: patchPath,
-          cleanupDir: tmpDir,
         };
       }
       // Patch too big, fall back to full
@@ -848,20 +891,12 @@ async function syncFolderOnce(
 
   const sendStart = nowMs();
   let resp: FolderSyncHttpResponse;
-  try {
-    resp = await httpFolderSyncBatch(
-      opts,
-      meta,
-      encodedPayloads.map((p) => ({ filePath: p.filePath })),
-      compression,
-    );
-  } catch (err) {
-    if (attempt < 1 && isENOENT(err)) {
-      slog('warn', `sync retrying after missing file during upload (ENOENT)`);
-      return await syncFolderOnce(localFolderPath, opts, reason, attempt + 1);
-    }
-    throw err;
-  }
+  resp = await httpFolderSyncBatch(
+    opts,
+    meta,
+    encodedPayloads.map((p) => ({ filePath: p.filePath })),
+    compression,
+  );
   httpSendMsTotal += nowMs() - sendStart;
 
   // Retry once if server needs full for some paths (basis mismatch).
@@ -882,6 +917,12 @@ async function syncFolderOnce(
     for (const p of need) {
       const entry = fileMap.get(p);
       if (!entry) continue;
+      if (!staged.has(entry)) {
+        // The first request declared this file unchanged against our cached basis.
+        const expected = entry.sha256;
+        await stage(entry, cacheGet(opts.basisCacheDir, entry.path));
+        if (entry.sha256 !== expected) throw new Error(`sync basis changed for ${entry.path}; retry sync`);
+      }
       // The retry uploads real bytes: count them (and surface large files)
       // exactly like first-pass fulls, or a fresh-daemon resync of a warm
       // cache reports "sent=0B" while gigabytes upload.
@@ -921,18 +962,6 @@ async function syncFolderOnce(
     }
   }
 
-  // Cleanup patch temp dirs
-  await Promise.all(
-    encodedPayloads.map(async (p) => {
-      if (!p.cleanupDir) return;
-      try {
-        await fs.promises.rm(p.cleanupDir, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
-    }),
-  );
-
   // Sync work includes: local hashing + planning + transfers (but excludes finalize/install wait).
   const syncWorkMs = nowMs() - totalStart;
   if (!resp.ok) {
@@ -954,12 +983,10 @@ async function syncFolderOnce(
   if (resp.bundleId) {
     out.installedBundleId = resp.bundleId;
   }
-  // Update local cache optimistically: after a successful sync, cache reflects current local tree.
-  // The stale-symlink-ancestor sweep only matters when symlink sync is on
-  // (otherwise the cache never holds a symlink); checkedDirs memoizes ancestors
-  // across the sorted walk.
-  const checkedDirs = opts.syncSymlinks ? new Set<string>() : undefined;
+  // Keep the previous basis intact until the server accepts the new tree.
+  const checkedDirs = new Set<string>();
   for (const f of allFiles) {
+    if (!changedPaths.has(f.path)) continue;
     await cachePut(opts.basisCacheDir, f.path, f.absPath, f.linkTarget, checkedDirs);
   }
   return out;
