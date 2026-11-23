@@ -321,8 +321,46 @@ describe('folder-sync symlinks', () => {
     expect(fs.readlinkSync(cached)).toBe('../shared/real.swift');
   });
 
+  test.each([true, false])(
+    'syncs an identical directory copy independently of its former link target (syncSymlinks=%s)',
+    async (syncSymlinks) => {
+      const shared = path.join(tree, 'shared');
+      const dir = path.join(tree, 'dir');
+      fs.symlinkSync('shared', dir);
+      const server = await startStubServer([
+        { ok: true },
+        { ok: false, error: 'sync rejected' },
+        { ok: true },
+      ]);
+      try {
+        const opts = syncOpts(server, cache);
+        await syncFolder(tree, opts);
+        fs.unlinkSync(dir);
+        fs.cpSync(shared, dir, { recursive: true });
+        const next = { ...opts, syncSymlinks };
+
+        await expect(syncFolder(tree, next)).rejects.toThrow('sync rejected');
+        expect(fs.readlinkSync(path.join(cache, 'dir'))).toBe('shared');
+
+        await syncFolder(tree, next);
+        expect(server.requests[2]!.payloads).toEqual([
+          expect.objectContaining({ path: 'dir/real.swift', kind: 'full' }),
+        ]);
+        expect(fs.lstatSync(path.join(cache, 'dir')).isDirectory()).toBe(true);
+        fs.writeFileSync(path.join(shared, 'real.swift'), 'updated target');
+        await syncFolder(tree, next);
+        expect(server.requests[3]!.payloads.map((p) => p.path)).toEqual(['shared/real.swift']);
+        expect(fs.readFileSync(path.join(cache, 'dir', 'real.swift'), 'utf8')).toBe('let x = 1\n');
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
   test('a symlinked dir replaced by a real dir does not corrupt the target basis', async () => {
     // Sync 1: 'dir' is a symlink to the 'shared' directory.
+    const original = Buffer.alloc(128 * 1024, 'a');
+    fs.writeFileSync(path.join(tree, 'shared', 'bundle.bin'), original);
     fs.symlinkSync('shared', path.join(tree, 'dir'));
     let server = await startStubServer({ ok: true });
     try {
@@ -332,22 +370,23 @@ describe('folder-sync symlinks', () => {
     }
     expect(fs.lstatSync(path.join(cache, 'dir')).isSymbolicLink()).toBe(true);
 
-    // Sync 2: replace 'dir' with a real directory holding its own file. The
-    // stale cache symlink at cache/dir must be pruned so dir/a.txt is not
-    // written through it into cache/shared, corrupting shared/real.swift's basis.
+    // The old link target would make a small delta, but it is not a basis for dir/bundle.bin.
     fs.rmSync(path.join(tree, 'dir'));
     fs.mkdirSync(path.join(tree, 'dir'));
-    fs.writeFileSync(path.join(tree, 'dir', 'a.txt'), 'dir-a-content\n');
+    const updated = Buffer.from(original);
+    updated[0] = 0;
+    fs.writeFileSync(path.join(tree, 'dir', 'bundle.bin'), updated);
     server = await startStubServer({ ok: true });
     try {
       await syncFolder(tree, syncOpts(server, cache));
     } finally {
       await server.close();
     }
-    // shared/real.swift basis is intact (not overwritten via the stale link).
-    expect(fs.readFileSync(path.join(cache, 'shared', 'real.swift'), 'utf-8')).toBe('let x = 1\n');
-    // cache/dir is now a real directory with the right file.
-    expect(fs.lstatSync(path.join(cache, 'dir')).isSymbolicLink()).toBe(false);
-    expect(fs.readFileSync(path.join(cache, 'dir', 'a.txt'), 'utf-8')).toBe('dir-a-content\n');
+    expect(server.requests[0]!.payloads).toEqual([
+      expect.objectContaining({ path: 'dir/bundle.bin', kind: 'full' }),
+    ]);
+    expect(fs.readFileSync(path.join(cache, 'shared', 'bundle.bin')).equals(original)).toBe(true);
+    expect(fs.lstatSync(path.join(cache, 'dir')).isDirectory()).toBe(true);
+    expect(fs.readFileSync(path.join(cache, 'dir', 'bundle.bin')).equals(updated)).toBe(true);
   });
 });
