@@ -97,7 +97,7 @@ export default class IosCreate extends BaseCommand {
     }),
     'os-version': Flags.string({
       description:
-        'iOS major version to create (26 or 27). iPhone and iPad run both; iPhone SE, iPhone 17e and iPhone Duo 27; Watch 26.',
+        'iOS major version to create (18, 26 or 27). iPhone runs all three; iPad runs 26 and 27; iPhone SE, iPhone 17e and iPhone Duo 27; Watch 26.',
       options: IOS_OS_VERSIONS,
     }),
     'reuse-if-exists': Flags.boolean({

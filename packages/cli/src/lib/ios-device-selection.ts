@@ -15,7 +15,7 @@ export const IOS_MODELS: NonNullable<IosInstanceCreateParams.Spec['model']>[] = 
   'ipad',
   'watch',
 ];
-export const IOS_OS_VERSIONS = ['26', '27'];
+export const IOS_OS_VERSIONS = ['18', '26', '27'];
 
 /** Maps the --os-version and --model flag values to the spec fields that select the simulator. */
 export function iosDeviceSelection(osVersion?: string, model?: string): IosDeviceSelection {

@@ -82,5 +82,5 @@ test.each(['iphone-16-pro-max', 'ipad-pro-13'])('creates a simulator with --mode
 });
 
 test('iOS create exposes the supported iOS versions', () => {
-  expect(IosCreate.flags['os-version'].options).toEqual(['26', '27']);
+  expect(IosCreate.flags['os-version'].options).toEqual(['18', '26', '27']);
 });
