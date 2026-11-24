@@ -1,4 +1,10 @@
-import { WorkloadCredentials } from './lib/workload-credentials';
+import {
+  WorkloadCredentials,
+  workloadTokenFileReader,
+  workloadTokenReader,
+  type WorkloadIdentityReader,
+  type WorkloadToken,
+} from './lib/workload-credentials';
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 import type { RequestInit, RequestInfo, BodyInit } from './internal/builtin-types';
@@ -117,7 +123,29 @@ import {
 } from './internal/utils/log';
 import { isEmptyObj } from './internal/utils/values';
 
+/**
+ * Picks the workload identity source: explicit options before environment variables, and a token
+ * before a file. Null on either option turns off discovery of its environment variable.
+ */
+function workloadIdentity(opts: {
+  workloadToken?: WorkloadToken | null | undefined;
+  workloadTokenFile?: string | null | undefined;
+}): WorkloadIdentityReader | undefined {
+  if (opts.workloadToken) return workloadTokenReader(opts.workloadToken);
+  if (opts.workloadTokenFile) return workloadTokenFileReader(opts.workloadTokenFile);
+  const token = opts.workloadToken === null ? undefined : readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN');
+  if (token) return workloadTokenReader(token);
+  const file = opts.workloadTokenFile === null ? undefined : readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
+  return file ? workloadTokenFileReader(file) : undefined;
+}
+
 export interface ClientOptions {
+  /**
+   * Workload JWT from your identity provider, or a function that returns the current one. A string is
+   * exchanged as is on every renewal, so pass a function when the JWT expires before the client is done.
+   * Takes precedence over workloadTokenFile. Defaults to LIMRUN_WORKLOAD_IDENTITY_TOKEN. Null disables discovery.
+   */
+  workloadToken?: WorkloadToken | null;
   /** Projected workload JWT file. Defaults to LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE. Null disables discovery. */
   workloadTokenFile?: string | null;
   /** Customer federation binding ID. Defaults to LIMRUN_WORKLOAD_IDENTITY_BINDING_ID. */
@@ -241,20 +269,19 @@ export class Limrun {
     apiKey = readEnv('LIM_API_KEY') ?? null,
     ...opts
   }: ClientOptions = {}) {
-    const tokenFile =
-      opts.workloadTokenFile === null ?
-        undefined
-      : opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
+    const identity = workloadIdentity(opts);
     const bindingId =
       opts.bindingId === null ? undefined : opts.bindingId ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_BINDING_ID');
-    if (!apiKey && bindingId && !tokenFile)
-      throw new Error('Federation requires workloadTokenFile or LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
+    if (!apiKey && bindingId && !identity)
+      throw new Error(
+        'Federation requires workloadToken, workloadTokenFile, LIMRUN_WORKLOAD_IDENTITY_TOKEN, or LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE',
+      );
     const options: ClientOptions = {
       apiKey,
       ...opts,
       baseURL:
         baseURL ||
-        (!apiKey && tokenFile && !bindingId ? readEnv('DIRECTOR_URL') : undefined) ||
+        (!apiKey && identity && !bindingId ? readEnv('DIRECTOR_URL') : undefined) ||
         `https://api.limrun.com`,
     };
 
@@ -288,12 +315,12 @@ export class Limrun {
     this._options = options;
 
     this.apiKey = apiKey;
-    if (!apiKey && tokenFile)
+    if (!apiKey && identity)
       this.workloadCredentials = new WorkloadCredentials(
         opts.stsBaseURL ??
           readEnv('LIMRUN_STS_BASE_URL') ??
           (bindingId ? 'https://sts.limrun.com' : this.baseURL),
-        tokenFile,
+        identity,
         this.fetch,
         this.fetchOptions,
         bindingId,
