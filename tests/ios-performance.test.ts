@@ -152,3 +152,127 @@ test('Ios.streamPerformance tails the endpoint with only the apiUrl and token', 
   expect(authorization).toBe('Bearer test-token');
   expect(events).toEqual(['com.example.app', 'replayed']);
 });
+
+const postedTo = (fetch: unknown) =>
+  (fetch as jest.Mock).mock.calls.map(([input, init]) => ({
+    url: String(input),
+    method: init?.method,
+    authorization: new Headers(init?.headers).get('Authorization'),
+    body: JSON.parse(String(init?.body)),
+  }));
+
+test('sampleStacks and memoryReport post the app to the instance and return its reports', async () => {
+  const stacks = { bundleId: 'com.example.app', pid: 7, durationSeconds: 3, report: 'Call graph:\n' };
+  const memory = {
+    bundleId: 'com.example.app',
+    pid: 7,
+    footprintBytes: 10,
+    peakFootprintBytes: 12,
+    leakCount: 2,
+    leakedBytes: 1808,
+    leaks: 'Process 7: 2 leaks for 1808 total leaked bytes.\n',
+    heap: 'COUNT BYTES\n',
+    regions: 'Physical footprint: 10\n',
+  };
+  nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo) =>
+    Response.json(String(input).endsWith('/stacks') ? stacks : memory),
+  );
+  const client = await connect();
+  try {
+    expect(await client.sampleStacks({ bundleId: 'com.example.app', durationSeconds: 3 })).toEqual(stacks);
+    // Without options the instance picks the app launched last.
+    expect(await client.memoryReport()).toEqual(memory);
+    expect(postedTo(nodeProxyTransport.fetch)).toEqual([
+      {
+        url: 'https://ios.example.test/performance/stacks',
+        method: 'POST',
+        authorization: 'Bearer test-token',
+        body: { bundleId: 'com.example.app', durationSeconds: 3 },
+      },
+      {
+        url: 'https://ios.example.test/performance/memory',
+        method: 'POST',
+        authorization: 'Bearer test-token',
+        body: {},
+      },
+    ]);
+  } finally {
+    client.disconnect();
+  }
+});
+
+// A runtime from before these operations has no such route, which is the one case a caller can fix
+// by creating a new instance.
+test('a 404 from the instance says its runtime cannot profile apps', async () => {
+  const { AppProfilingUnavailableError } = await import('../src/ios-client');
+  nodeProxyTransport.fetch = jest.fn(async () => new Response('Not Found', { status: 404 }));
+  const client = await connect();
+  try {
+    await expect(client.sampleStacks()).rejects.toBeInstanceOf(AppProfilingUnavailableError);
+    await expect(client.memoryReport()).rejects.toBeInstanceOf(AppProfilingUnavailableError);
+  } finally {
+    client.disconnect();
+  }
+});
+
+test('refusals carry the instance message and status, whatever the body', async () => {
+  const answers = [
+    Response.json({ message: 'com.example.app is not running.' }, { status: 422 }),
+    // A proxy in between answers without the instance's JSON.
+    new Response('', { status: 502 }),
+  ];
+  nodeProxyTransport.fetch = jest.fn(async () => answers.shift()!);
+  const client = await connect();
+  try {
+    await expect(client.sampleStacks({ bundleId: 'com.example.app' })).rejects.toMatchObject({
+      message: 'com.example.app is not running.',
+      status: 422,
+    });
+    await expect(client.memoryReport()).rejects.toMatchObject({
+      message: 'memoryReport failed: 502',
+      status: 502,
+    });
+  } finally {
+    client.disconnect();
+  }
+});
+
+test('sampleStacks refuses a duration the instance would refuse, before asking it', async () => {
+  nodeProxyTransport.fetch = jest.fn();
+  const client = await connect();
+  try {
+    for (const durationSeconds of [0, 31, 2.5, Number.NaN]) {
+      await expect(client.sampleStacks({ durationSeconds })).rejects.toThrow(
+        'durationSeconds must be an integer between 1 and 30',
+      );
+    }
+    expect(nodeProxyTransport.fetch).not.toHaveBeenCalled();
+  } finally {
+    client.disconnect();
+  }
+});
+
+// The instance ends an overrunning tool itself, so this side waits ten seconds longer than that.
+test('an instance that never answers ends as a named timeout', async () => {
+  nodeProxyTransport.fetch = jest.fn(
+    (_input: RequestInfo, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init!.signal!.addEventListener('abort', () => reject(new Error('This operation was aborted')));
+      }),
+  );
+  const client = await connect();
+  jest.useFakeTimers();
+  try {
+    const sample = client.sampleStacks({ durationSeconds: 3 });
+    const failure = expect(sample).rejects.toThrow(
+      'sampleStacks got no answer from the instance within 43 seconds',
+    );
+    await jest.advanceTimersByTimeAsync(42_999);
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+    await jest.advanceTimersByTimeAsync(1);
+    await failure;
+  } finally {
+    jest.useRealTimers();
+    client.disconnect();
+  }
+});
