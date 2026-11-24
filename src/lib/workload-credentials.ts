@@ -1,13 +1,30 @@
 import type { MergedRequestInit } from '../internal/types';
 
-/** Refreshes workload credentials without retaining the projected JWT. */
+/** A workload JWT, or a function that returns the current one on every exchange. */
+export type WorkloadToken = string | (() => string | Promise<string>);
+
+/** Returns the identity JWT to exchange, read again for every exchange. */
+export type WorkloadIdentityReader = () => Promise<string>;
+
+export function workloadTokenReader(token: WorkloadToken): WorkloadIdentityReader {
+  return async () => (typeof token === 'function' ? await token() : token);
+}
+
+export function workloadTokenFileReader(path: string): WorkloadIdentityReader {
+  return async () => {
+    const { readFile } = await import('node:fs/promises');
+    return readFile(path, 'utf8');
+  };
+}
+
+/** Refreshes workload credentials without retaining the identity JWT. */
 export class WorkloadCredentials {
   private cached?: { token: string; expires: number; refreshAt: number };
   private pending: Promise<string> | undefined;
 
   constructor(
     private endpoint: string,
-    private tokenFile: string,
+    private readIdentity: WorkloadIdentityReader,
     private fetcher: typeof fetch,
     private fetchOptions?: MergedRequestInit,
     private bindingId?: string,
@@ -23,10 +40,10 @@ export class WorkloadCredentials {
   }
 
   private async exchange(): Promise<string> {
-    const { readFile } = await import('node:fs/promises');
-    const jwt = (await readFile(this.tokenFile, 'utf8')).trim();
+    const identity = await this.readIdentity();
+    const jwt = typeof identity === 'string' ? identity.trim() : '';
     if (!jwt || jwt.length > 32768)
-      throw new Error('Workload identity file must contain a JWT of at most 32768 characters');
+      throw new Error('Workload identity token must be a JWT of at most 32768 characters');
     const start = Date.now();
     const response = await this.fetcher(`${this.endpoint.replace(/\/$/, '')}/v1/access_tokens`, {
       ...(this.fetchOptions as RequestInit),
