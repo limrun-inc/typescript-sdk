@@ -1,4 +1,6 @@
-import Limrun, { APIError, AuthenticationError, NotFoundError } from '@limrun/api';
+import Limrun, { APIError, NotFoundError } from '@limrun/api';
+
+import { isLoginRequiredError } from './auth';
 
 /**
  * Backend API endpoints the generated resources do not cover (Stainless
@@ -17,9 +19,12 @@ export type PutSecretResult = {
 
 export const androidSigningKeySecretType = 'androidSigningKey';
 
-/** Wraps transport errors with call context; auth errors pass through untouched. */
+/**
+ * Wraps transport errors with call context. Auth errors pass through untouched, including a 403
+ * that asks for a login, so withAuth can re-login or show its workload identity guidance.
+ */
 function rethrow(err: unknown, context: string): never {
-  if (err instanceof AuthenticationError || !(err instanceof APIError)) {
+  if (isLoginRequiredError(err) || !(err instanceof APIError)) {
     throw err;
   }
   throw new Error(`${context}: ${err.message}`);

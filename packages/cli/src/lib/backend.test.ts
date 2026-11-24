@@ -1,4 +1,4 @@
-import Limrun, { AuthenticationError } from '@limrun/api';
+import Limrun, { AuthenticationError, PermissionDeniedError } from '@limrun/api';
 
 import {
   createQuickTunnel,
@@ -185,6 +185,16 @@ describe('backend client', () => {
     it('throws the SDK AuthenticationError on 401 so withAuth can re-login', async () => {
       fetchMock.mockResolvedValue(mockResponse(401, {}));
       await expect(whoAmI(client)).rejects.toBeInstanceOf(AuthenticationError);
+    });
+
+    it('passes a login-required 403 through so withAuth can handle it', async () => {
+      fetchMock.mockResolvedValue(mockResponse(403, { message: 'unauthenticated: login required' }));
+      await expect(whoAmI(client)).rejects.toBeInstanceOf(PermissionDeniedError);
+    });
+
+    it('adds context to other 403s', async () => {
+      fetchMock.mockResolvedValue(mockResponse(403, { message: 'forbidden' }));
+      await expect(whoAmI(client)).rejects.toThrow(/^Failed to resolve the organization: /);
     });
 
     it('fails when no organization is reported', async () => {
