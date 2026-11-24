@@ -23,9 +23,9 @@ const instance = await limrun.iosInstances.create({
     initialAssets: [
       {
         kind: 'App',
-        source: 'URL',
-        // Use Limrun asset storage in production to avoid being throttled by GitHub.
-        url: 'https://github.com/appium/WebDriverAgent/releases/download/v10.4.5/WebDriverAgentRunner-Build-Sim-arm64.zip',
+        source: 'AssetName',
+        // A simulator build of WebDriverAgent that Limrun hosts for every organization.
+        assetName: 'appstore/WebDriverAgentRunner-16.15.3.zip',
         launchMode: 'ForegroundIfRunning',
       },
     ],
