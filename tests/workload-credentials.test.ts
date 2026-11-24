@@ -411,3 +411,77 @@ test('federation without any workload identity names every source', () => {
     'Federation requires workloadToken, workloadTokenFile, LIMRUN_WORKLOAD_IDENTITY_TOKEN, or LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE',
   );
 });
+
+describe('injected workload token', () => {
+  function injectedFetcher(forms: URLSearchParams[]) {
+    return jest.fn(async (url: unknown, init?: RequestInit) => {
+      if (String(url).endsWith('/v1/access_tokens')) {
+        const headers = new Headers(init?.headers);
+        expect(headers.has('Authorization')).toBe(false);
+        expect(headers.has('X-Limrun-Subject-Token')).toBe(false);
+        forms.push(new URLSearchParams(init?.body as string));
+        return Response.json({ access_token: 'limrun-session', token_type: 'Bearer', expires_in: 900 });
+      }
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer limrun-session');
+      return Response.json({ items: [] });
+    });
+  }
+
+  beforeEach(() => {
+    jest.replaceProperty(process, 'env', {
+      ...process.env,
+      LIM_API_KEY: '',
+      LIMRUN_WORKLOAD_IDENTITY_TOKEN: '',
+      LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: '',
+      LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED: '',
+      LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: '',
+    });
+  });
+
+  test.each([
+    ['explicit option', { workloadTokenInjected: true, bindingId: 'binding_customer' }, {}],
+    [
+      'environment',
+      {},
+      {
+        LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED: 'true',
+        LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: 'binding_customer',
+      },
+    ],
+  ])('exchanges without a subject token from the %s', async (_name, options, env) => {
+    Object.assign(process.env, env);
+    const forms: URLSearchParams[] = [];
+    await new Limrun({ ...options, fetch: injectedFetcher(forms) }).iosInstances.list();
+    expect(forms).toHaveLength(1);
+    expect(forms[0]!.has('subject_token')).toBe(false);
+    expect(forms[0]!.get('audience')).toBe('binding_customer');
+    expect(forms[0]!.get('subject_token_type')).toBe('urn:ietf:params:oauth:token-type:jwt');
+  });
+
+  test('requires a binding', () => {
+    expect(() => new Limrun({ workloadTokenInjected: true })).toThrow(
+      'workloadTokenInjected requires bindingId or LIMRUN_WORKLOAD_IDENTITY_BINDING_ID',
+    );
+  });
+
+  test.each([{ workloadToken: 'jwt' }, { workloadTokenFile: '/var/run/identity/token' }])(
+    'refuses a second identity source %p',
+    (source) => {
+      expect(
+        () => new Limrun({ workloadTokenInjected: true, bindingId: 'binding_customer', ...source }),
+      ).toThrow('workloadTokenInjected cannot be combined');
+    },
+  );
+
+  test('null turns off the environment variable', async () => {
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED'] = 'true';
+    process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID'] = 'binding_customer';
+    expect(() => new Limrun({ workloadTokenInjected: null })).toThrow('Federation requires');
+  });
+
+  test('an API key wins over a conflicting injected configuration', () => {
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED'] = 'true';
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN'] = 'jwt';
+    expect(new Limrun({ apiKey: 'key' }).apiKey).toBe('key');
+  });
+});
