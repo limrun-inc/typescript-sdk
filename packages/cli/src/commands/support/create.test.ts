@@ -14,7 +14,7 @@ async function requestKey(subject: string, message: string, ...extra: string[]):
   await command.run();
   const [path, { body, headers }] = post.mock.calls[0]!;
   expect(path).toBe('/v1/organizations/org_example/support_tickets');
-  expect(body).toEqual({ kind: 'ticket', subject, message });
+  expect(body).toMatchObject({ kind: 'ticket', subject, message });
   return headers['Idempotency-Key'];
 }
 
@@ -31,4 +31,10 @@ test('retries keep their payload-derived UUID across CLI invocations and version
 test('an explicit event UUID takes precedence over the payload hash', async () => {
   const key = '11519c87-dfd9-45f3-ad9b-6b2fc0473da9';
   expect(await requestKey('Release failed', 'Signing failed.', '--idempotency-key', key)).toBe(key);
+});
+
+test('the payload key includes CC addresses and ignores their order', async () => {
+  const key = await requestKey('Build', 'Failed', '--cc', 'a@example.com', '--cc', 'b@example.com');
+  expect(key).not.toBe(await requestKey('Build', 'Failed'));
+  expect(key).toBe(await requestKey('Build', 'Failed', '--cc', 'b@example.com', '--cc', 'a@example.com'));
 });

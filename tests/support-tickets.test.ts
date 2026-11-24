@@ -26,3 +26,19 @@ test.each([undefined, '54d8ef51-614e-4568-8275-b358cdcf262f'])(
     expect(keys[1]).toEqual(idempotencyKey ?? keys[0]);
   },
 );
+
+test('clears the CC list on one organization ticket', async () => {
+  const client = new Limrun({
+    apiKey: 'test',
+    baseURL: 'https://api.example.test',
+    fetch: async (url, init) => {
+      expect(String(url)).toBe(
+        'https://api.example.test/v1/organizations/org_test/support_tickets/ticket_test',
+      );
+      expect(init?.method).toBe('PATCH');
+      expect(JSON.parse(String(init?.body))).toEqual({ ccEmails: [] });
+      return new Response(null, { status: 204 });
+    },
+  });
+  await client.supportTickets.setCC('org_test', 'ticket_test', []);
+});

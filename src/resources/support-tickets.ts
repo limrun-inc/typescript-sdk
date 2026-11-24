@@ -9,6 +9,7 @@ export interface SupportTicketCreateParams {
   kind: 'ticket' | 'feedback';
   subject: string;
   message: string;
+  ccEmails?: string[];
 }
 
 export interface SupportTicket {
@@ -31,6 +32,19 @@ export class SupportTickets extends APIResource {
       ...options,
       body,
       headers: buildHeaders([{ 'Idempotency-Key': options?.idempotencyKey ?? uuid4() }, options?.headers]),
+    });
+  }
+
+  /** Replaces the recipients of future support notifications. Pass an empty array to clear them. */
+  setCC(
+    organizationId: string,
+    ticketId: string,
+    ccEmails: string[],
+    options?: RequestOptions,
+  ): APIPromise<void> {
+    return this._client.patch(path`/v1/organizations/${organizationId}/support_tickets/${ticketId}`, {
+      ...options,
+      body: { ccEmails },
     });
   }
 }
