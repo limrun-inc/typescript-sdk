@@ -1,4 +1,11 @@
-import { WorkloadCredentials } from './lib/workload-credentials';
+import {
+  WorkloadCredentials,
+  injectedWorkloadIdentityReader,
+  workloadTokenFileReader,
+  workloadTokenReader,
+  type WorkloadIdentityReader,
+  type WorkloadToken,
+} from './lib/workload-credentials';
 // File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 import type { RequestInit, RequestInfo, BodyInit } from './internal/builtin-types';
@@ -117,9 +124,62 @@ import {
 } from './internal/utils/log';
 import { isEmptyObj } from './internal/utils/values';
 
+/**
+ * Picks the workload identity source: explicit options before environment variables, and a token
+ * before a file. Null on either option turns off discovery of its environment variable.
+ */
+function workloadIdentity(opts: {
+  workloadToken?: WorkloadToken | null | undefined;
+  workloadTokenFile?: string | null | undefined;
+  workloadTokenInjected?: boolean | null | undefined;
+}): WorkloadIdentityReader | undefined {
+  const reader = workloadTokenSource(opts);
+  const injected =
+    opts.workloadTokenInjected === null ?
+      false
+    : opts.workloadTokenInjected ??
+      /^(1|true)$/i.test(readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED') ?? '');
+  if (!injected) return reader;
+  // The proxy decides which JWT the exchange carries, so a second source would be ignored.
+  if (reader)
+    throw new Error(
+      'workloadTokenInjected cannot be combined with workloadToken, workloadTokenFile, or their environment variables',
+    );
+  return injectedWorkloadIdentityReader;
+}
+
+function workloadTokenSource(opts: {
+  workloadToken?: WorkloadToken | null | undefined;
+  workloadTokenFile?: string | null | undefined;
+}): WorkloadIdentityReader | undefined {
+  if (opts.workloadToken) return workloadTokenReader(opts.workloadToken);
+  if (opts.workloadTokenFile) return workloadTokenFileReader(opts.workloadTokenFile);
+  const token = opts.workloadToken === null ? undefined : readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN');
+  if (token) return workloadTokenReader(token);
+  const file = opts.workloadTokenFile === null ? undefined : readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
+  return file ? workloadTokenFileReader(file) : undefined;
+}
+
 export interface ClientOptions {
+  /**
+   * Workload JWT from your identity provider, or a function that returns the current one. A string is
+   * exchanged as is on every renewal, so pass a function when the JWT expires before the client is done.
+   * Takes precedence over workloadTokenFile. Defaults to LIMRUN_WORKLOAD_IDENTITY_TOKEN. Null disables discovery.
+   */
+  workloadToken?: WorkloadToken | null;
   /** Projected workload JWT file. Defaults to LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE. Null disables discovery. */
   workloadTokenFile?: string | null;
+  /**
+   * Exchange without sending a JWT, for platforms whose egress proxy adds it to requests for the token
+   * service in the X-Limrun-Subject-Token header, so the workload never handles it. Requires bindingId
+   * and cannot be combined with workloadToken or workloadTokenFile.
+   * Defaults to LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED=true. Null disables discovery.
+   */
+  workloadTokenInjected?: boolean | null;
+  /** Customer federation binding ID. Defaults to LIMRUN_WORKLOAD_IDENTITY_BINDING_ID. */
+  bindingId?: string | null;
+  /** Token service base URL. Federation defaults to https://sts.limrun.com. */
+  stsBaseURL?: string;
   /**
    * Defaults to process.env['LIM_API_KEY'].
    */
@@ -237,15 +297,23 @@ export class Limrun {
     apiKey = readEnv('LIM_API_KEY') ?? null,
     ...opts
   }: ClientOptions = {}) {
-    const tokenFile =
-      opts.workloadTokenFile === null ?
-        undefined
-      : opts.workloadTokenFile ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE');
+    // An API key wins, so workload identity settings it overrides cannot fail construction.
+    const identity = apiKey ? undefined : workloadIdentity(opts);
+    const bindingId =
+      opts.bindingId === null ? undefined : opts.bindingId ?? readEnv('LIMRUN_WORKLOAD_IDENTITY_BINDING_ID');
+    if (!apiKey && identity === injectedWorkloadIdentityReader && !bindingId)
+      throw new Error('workloadTokenInjected requires bindingId or LIMRUN_WORKLOAD_IDENTITY_BINDING_ID');
+    if (!apiKey && bindingId && !identity)
+      throw new Error(
+        'Federation requires workloadToken, workloadTokenFile, LIMRUN_WORKLOAD_IDENTITY_TOKEN, or LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE',
+      );
     const options: ClientOptions = {
       apiKey,
       ...opts,
       baseURL:
-        baseURL || (!apiKey && tokenFile ? readEnv('DIRECTOR_URL') : undefined) || `https://api.limrun.com`,
+        baseURL ||
+        (!apiKey && identity && !bindingId ? readEnv('DIRECTOR_URL') : undefined) ||
+        `https://api.limrun.com`,
     };
 
     this.baseURL = options.baseURL!;
@@ -278,12 +346,15 @@ export class Limrun {
     this._options = options;
 
     this.apiKey = apiKey;
-    if (!apiKey && tokenFile)
+    if (!apiKey && identity)
       this.workloadCredentials = new WorkloadCredentials(
-        this.baseURL,
-        tokenFile,
+        opts.stsBaseURL ??
+          readEnv('LIMRUN_STS_BASE_URL') ??
+          (bindingId ? 'https://sts.limrun.com' : this.baseURL),
+        identity,
         this.fetch,
         this.fetchOptions,
+        bindingId,
       );
   }
 

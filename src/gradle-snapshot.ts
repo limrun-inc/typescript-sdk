@@ -1,4 +1,4 @@
-import { followPhaseStream } from './internal/instance-phase-stream';
+import { followPhaseStream, type PhaseStreamAuth } from './internal/instance-phase-stream';
 
 /**
  * A disk snapshot of a Gradle build sandbox, restored after the instance is assigned and saved at
@@ -82,9 +82,8 @@ export type GradleSnapshotSide = 'restore' | 'save';
 
 export type GradleSnapshotFollowTarget = {
   baseURL: string;
-  apiKey: string;
   instanceId: string;
-};
+} & PhaseStreamAuth;
 
 export type GradleSnapshotFollowOptions = {
   /** Defaults to 'restore'. */
@@ -174,7 +173,7 @@ export async function followGradleSnapshot(
   while (base.endsWith('/')) base = base.slice(0, -1);
   const result = await followPhaseStream<GradleInstanceSnapshot>({
     url: `${base}/v1/gradle_instances/${encodeURIComponent(target.instanceId)}/snapshot`,
-    apiKey: target.apiKey,
+    auth: target,
     instanceId: target.instanceId,
     eventName: 'snapshot',
     timeoutMs,

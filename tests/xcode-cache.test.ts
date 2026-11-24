@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 type SseMessage = { event: string; data: string };
 type SseHandle = {
   emit: (message: SseMessage) => void;
@@ -53,6 +56,86 @@ describe('xcode cache follower', () => {
 
   afterEach(() => {
     nodeProxyTransport.fetch = originalFetch;
+  });
+
+  test.each([false, true])('credential failure rejects immediately (reconnect: %s)', async (reconnect) => {
+    const dir = await mkdtemp(join(tmpdir(), 'limrun-follow-error-'));
+    const tokenFile = join(dir, 'jwt');
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(1000000);
+    try {
+      await writeFile(tokenFile, 'external.jwt');
+      const exchange = jest.fn(async () =>
+        Response.json({
+          access_token: 'session',
+          token_type: 'Bearer',
+          expires_in: 300,
+        }),
+      );
+      const client = new Limrun({
+        apiKey: null,
+        workloadTokenFile: tokenFile,
+        bindingId: 'binding_build',
+        fetch: exchange,
+      });
+      nodeProxyTransport.fetch = jest.fn(async () => new Response(''));
+      const following = client.xcodeInstances.followSnapshot('sandbox_1');
+      const rejected = expect(following).rejects.toThrow('Workload token exchange returned HTTP 403');
+      const source = await nextSource();
+      if (reconnect) {
+        await source.connect();
+        clock.mockReturnValue(1250000);
+      }
+      exchange.mockImplementation(async () => Response.json({}, { status: 403 }));
+      await expect(source.connect()).rejects.toThrow('Workload token exchange returned HTTP 403');
+      await rejected;
+      expect(source.closed).toBe(true);
+      expect(nodeProxyTransport.fetch).toHaveBeenCalledTimes(reconnect ? 1 : 0);
+    } finally {
+      clock.mockRestore();
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  test('federated snapshot followers renew credentials on reconnect', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'limrun-snapshot-identity-'));
+    const tokenFile = join(dir, 'jwt');
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      await writeFile(tokenFile, 'first.jwt');
+      const identities: string[] = [];
+      const apiHeaders: string[] = [];
+      const client = new Limrun({
+        apiKey: null,
+        workloadTokenFile: tokenFile,
+        bindingId: 'binding_build',
+        fetch: jest.fn(async (_url, init) => {
+          identities.push(new URLSearchParams(init?.body as string).get('subject_token')!);
+          return Response.json({
+            access_token: `session-${identities.length}`,
+            token_type: 'Bearer',
+            expires_in: 300,
+          });
+        }),
+      });
+      nodeProxyTransport.fetch = jest.fn(async (_url, init) => {
+        apiHeaders.push(new Headers(init?.headers).get('authorization')!);
+        return new Response('');
+      });
+      const following = client.xcodeInstances.followSnapshot('sandbox_1');
+      const source = await nextSource();
+      await source.connect();
+      await writeFile(tokenFile, 'rotated.jwt');
+      clock.mockReturnValue(now + 250_000);
+      await source.connect();
+      source.emit(cacheEvent({ restore: 'restored' }));
+      await following;
+      expect(identities).toEqual(['first.jwt', 'rotated.jwt']);
+      expect(apiHeaders).toEqual(['Bearer session-1', 'Bearer session-2']);
+    } finally {
+      clock.mockRestore();
+      await rm(dir, { recursive: true });
+    }
   });
 
   test('reports every phase change once and resolves on a terminal restore', async () => {

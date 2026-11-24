@@ -1,4 +1,4 @@
-import { followPhaseStream } from './internal/instance-phase-stream';
+import { followPhaseStream, type PhaseStreamAuth } from './internal/instance-phase-stream';
 
 /** @deprecated Use XcodeSnapshotConfig instead. */
 export type XcodeCacheConfig = import('./xcode-snapshot').XcodeSnapshotConfig;
@@ -172,9 +172,8 @@ export function isCacheTerminal(cache: XcodeInstanceCache, side: XcodeCacheSide)
 
 export type XcodeCacheFollowTarget = {
   baseURL: string;
-  apiKey: string;
   instanceId: string;
-};
+} & PhaseStreamAuth;
 
 /**
  * Follows an instance's cache status until the chosen side reaches a terminal phase, the
@@ -193,7 +192,7 @@ export async function followXcodeCache(
   while (base.endsWith('/')) base = base.slice(0, -1);
   const result = await followPhaseStream<XcodeInstanceCache>({
     url: `${base}/v1/xcode_instances/${encodeURIComponent(target.instanceId)}/cache`,
-    apiKey: target.apiKey,
+    auth: target,
     instanceId: target.instanceId,
     eventName: 'cache',
     timeoutMs,

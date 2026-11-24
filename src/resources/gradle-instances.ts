@@ -76,9 +76,21 @@ export class GradleInstances extends APIResource {
 
   /** Follow the disk snapshot restore or save until it reaches a terminal phase. */
   followSnapshot(id: string, options?: GradleSnapshotFollowOptions): Promise<GradleSnapshotFollowResult> {
-    const apiKey = this._client.apiKey;
-    if (!apiKey) throw new Error('Following disk snapshot status needs an API key on the client');
-    return followGradleSnapshot({ baseURL: this._client.baseURL, apiKey, instanceId: id }, options);
+    return followGradleSnapshot(
+      {
+        baseURL: this._client.baseURL,
+        instanceId: id,
+        // Resolved per connection, so federated and workload credentials refresh on reconnect.
+        getHeaders: async () => {
+          const { req } = await this._client.buildRequest({
+            method: 'get',
+            path: path`/v1/gradle_instances/${id}/snapshot`,
+          });
+          return req.headers;
+        },
+      },
+      options,
+    );
   }
 }
 

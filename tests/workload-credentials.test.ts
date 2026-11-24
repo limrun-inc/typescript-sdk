@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Limrun from '../src';
-import { WorkloadCredentials } from '../src/lib/workload-credentials';
+import { WorkloadCredentials, workloadTokenFileReader } from '../src/lib/workload-credentials';
 
 let dir: string;
 let tokenFile: string;
@@ -26,7 +26,11 @@ test('lazy exchange, concurrent requests, and rotated identity refresh', async (
     calls.push(new Headers(init?.headers).get('Authorization')!);
     return Response.json({ token: 'scoped', expiresAt: new Date(Date.now() + 600000).toISOString() });
   });
-  const credentials = new WorkloadCredentials('https://director.example', tokenFile, fetcher);
+  const credentials = new WorkloadCredentials(
+    'https://director.example',
+    workloadTokenFileReader(tokenFile),
+    fetcher,
+  );
   expect(fetcher).not.toHaveBeenCalled();
   expect(await Promise.all([credentials.get(), credentials.get()])).toEqual(['scoped', 'scoped']);
   expect(fetcher).toHaveBeenCalledTimes(1);
@@ -162,4 +166,322 @@ test('workload exchange uses client transport options without allowing credentia
   });
   await client.assets.createUploadURL('asset_01h455vb4pex5vsknk084sn02q');
   expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test('federation uses the binding and renews from the rotated file', async () => {
+  const identities: string[] = [];
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    expect(url).toBe('https://sts.example/v1/access_tokens');
+    expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+    const form = new URLSearchParams(init?.body as string);
+    expect(form.get('audience')).toBe('binding_customer');
+    expect(form.get('grant_type')).toBe('urn:ietf:params:oauth:grant-type:token-exchange');
+    identities.push(form.get('subject_token')!);
+    return Response.json({
+      access_token: `session-${identities.length}`,
+      token_type: 'Bearer',
+      expires_in: 30,
+    });
+  });
+  const credentials = new WorkloadCredentials(
+    'https://sts.example',
+    workloadTokenFileReader(tokenFile),
+    fetcher,
+    undefined,
+    'binding_customer',
+  );
+  expect(await Promise.all([credentials.get(), credentials.get()])).toEqual(['session-1', 'session-1']);
+  expect(await credentials.get()).toBe('session-1');
+  await writeFile(tokenFile, 'rotated');
+  const now = Date.now();
+  jest.spyOn(Date, 'now').mockReturnValue(now + 25000);
+  expect(await credentials.get()).toBe('session-2');
+  expect(identities).toEqual(['projected', 'rotated']);
+});
+
+test('federation client authenticates API calls with the exchanged token', async () => {
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).endsWith('/v1/access_tokens')) {
+      expect(url).toBe('https://sts.limrun.com/v1/access_tokens');
+      return Response.json({ access_token: 'limrun-session', token_type: 'Bearer', expires_in: 900 });
+    }
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer limrun-session');
+    expect(String(url)).toContain('https://api.limrun.com/');
+    return Response.json({ items: [] });
+  });
+  const client = new Limrun({
+    apiKey: null,
+    workloadTokenFile: tokenFile,
+    bindingId: 'binding_customer',
+    fetch: fetcher,
+  });
+  await client.iosInstances.list();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test('federation refusal never calls the requested API or reuses an expired session', async () => {
+  const fetcher = jest.fn(async () => Response.json({ error: 'invalid_grant' }, { status: 400 }));
+  const client = new Limrun({
+    apiKey: null,
+    workloadTokenFile: tokenFile,
+    bindingId: 'binding_customer',
+    fetch: fetcher,
+    maxRetries: 0,
+  });
+  await expect(client.iosInstances.list()).rejects.toThrow('Workload token exchange returned HTTP 400');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+test('discovers customer federation from workload identity environment variables', async () => {
+  jest.replaceProperty(process, 'env', {
+    ...process.env,
+    LIM_API_KEY: '',
+    LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: tokenFile,
+    LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: 'binding_environment',
+    LIMRUN_STS_BASE_URL: 'https://sts.example.com',
+  });
+  const fetcher = jest.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).endsWith('/v1/access_tokens')) {
+      expect(url).toBe('https://sts.example.com/v1/access_tokens');
+      const form = new URLSearchParams(init?.body as string);
+      expect(form.get('audience')).toBe('binding_environment');
+      expect(form.get('subject_token')).toBe('projected');
+      return Response.json({ access_token: 'limrun-session', token_type: 'Bearer', expires_in: 900 });
+    }
+    expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer limrun-session');
+    return Response.json({ items: [] });
+  });
+  await new Limrun({ fetch: fetcher }).iosInstances.list();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+
+test.each(['explicit', 'environment'])(
+  '%s API key bypasses incomplete federation configuration',
+  async (source) => {
+    jest.replaceProperty(process, 'env', {
+      ...process.env,
+      LIM_API_KEY: source === 'environment' ? 'key' : '',
+      LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: 'binding_unused',
+      LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: '',
+    });
+    const fetcher = jest.fn(async (_url: unknown, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer key');
+      return Response.json({ items: [] });
+    });
+    const client = new Limrun({ ...(source === 'explicit' ? { apiKey: 'key' } : {}), fetch: fetcher });
+    await client.androidInstances.list();
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  },
+);
+
+/** Answers the STS with a short session per exchange and authenticated API calls with an empty list. */
+function federationFetcher(subjects: string[]) {
+  return jest.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).endsWith('/v1/access_tokens')) {
+      const form = new URLSearchParams(init?.body as string);
+      expect(form.get('audience')).toBe('binding_customer');
+      subjects.push(form.get('subject_token')!);
+      return Response.json({
+        access_token: `session-${subjects.length}`,
+        token_type: 'Bearer',
+        expires_in: 30,
+      });
+    }
+    expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer session-${subjects.length}`);
+    return Response.json({ items: [] });
+  });
+}
+
+test('federation accepts the workload JWT as a string', async () => {
+  const subjects: string[] = [];
+  const client = new Limrun({
+    apiKey: null,
+    workloadToken: ' provided-jwt\n',
+    bindingId: 'binding_customer',
+    fetch: federationFetcher(subjects),
+  });
+  await client.iosInstances.list();
+  expect(subjects).toEqual(['provided-jwt']);
+});
+
+test('a workload token function supplies a fresh JWT on every renewal', async () => {
+  const subjects: string[] = [];
+  let issued = 0;
+  const workloadToken = jest.fn(async () => `jwt-${++issued}`);
+  const client = new Limrun({
+    apiKey: null,
+    workloadToken,
+    bindingId: 'binding_customer',
+    fetch: federationFetcher(subjects),
+  });
+  expect(workloadToken).not.toHaveBeenCalled();
+  await client.iosInstances.list();
+  await client.iosInstances.list();
+  const now = Date.now();
+  jest.spyOn(Date, 'now').mockReturnValue(now + 25000);
+  await client.iosInstances.list();
+  expect(subjects).toEqual(['jwt-1', 'jwt-2']);
+});
+
+test('a workload token function failure rejects the request without calling the API', async () => {
+  const fetcher = jest.fn();
+  const client = new Limrun({
+    apiKey: null,
+    workloadToken: () => {
+      throw new Error('identity provider is down');
+    },
+    bindingId: 'binding_customer',
+    fetch: fetcher,
+    maxRetries: 0,
+  });
+  await expect(client.iosInstances.list()).rejects.toThrow('identity provider is down');
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+test('an empty workload token is refused before the exchange', async () => {
+  const fetcher = jest.fn();
+  const client = new Limrun({
+    apiKey: null,
+    workloadToken: () => '  ',
+    bindingId: 'binding_customer',
+    fetch: fetcher,
+    maxRetries: 0,
+  });
+  await expect(client.iosInstances.list()).rejects.toThrow('Workload identity token must be a JWT');
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+test.each([
+  {
+    name: 'discovers the token environment variable',
+    options: {},
+    env: { token: 'env-jwt' },
+    subject: 'env-jwt',
+  },
+  {
+    name: 'prefers the token environment variable over the file one',
+    options: {},
+    env: { token: 'env-jwt', file: true },
+    subject: 'env-jwt',
+  },
+  {
+    name: 'an explicit token beats both environment variables',
+    options: { workloadToken: 'explicit-jwt' },
+    env: { token: 'env-jwt', file: true },
+    subject: 'explicit-jwt',
+  },
+  {
+    name: 'an explicit file beats the token environment variable',
+    options: { workloadTokenFile: 'file' },
+    env: { token: 'env-jwt' },
+    subject: 'projected',
+  },
+  {
+    name: 'null token turns off its environment variable',
+    options: { workloadToken: null },
+    env: { token: 'env-jwt', file: true },
+    subject: 'projected',
+  },
+])('$name', async ({ options, env, subject }) => {
+  jest.replaceProperty(process, 'env', {
+    ...process.env,
+    LIM_API_KEY: '',
+    LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: 'binding_customer',
+    LIMRUN_WORKLOAD_IDENTITY_TOKEN: env.token ?? '',
+    LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: 'file' in env ? tokenFile : '',
+  });
+  const subjects: string[] = [];
+  const client = new Limrun({
+    ...options,
+    ...('workloadTokenFile' in options && { workloadTokenFile: tokenFile }),
+    fetch: federationFetcher(subjects),
+  });
+  await client.iosInstances.list();
+  expect(subjects).toEqual([subject]);
+});
+
+test('federation without any workload identity names every source', () => {
+  jest.replaceProperty(process, 'env', {
+    ...process.env,
+    LIM_API_KEY: '',
+    LIMRUN_WORKLOAD_IDENTITY_TOKEN: '',
+    LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: '',
+  });
+  expect(() => new Limrun({ bindingId: 'binding_customer' })).toThrow(
+    'Federation requires workloadToken, workloadTokenFile, LIMRUN_WORKLOAD_IDENTITY_TOKEN, or LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE',
+  );
+});
+
+describe('injected workload token', () => {
+  function injectedFetcher(forms: URLSearchParams[]) {
+    return jest.fn(async (url: unknown, init?: RequestInit) => {
+      if (String(url).endsWith('/v1/access_tokens')) {
+        const headers = new Headers(init?.headers);
+        expect(headers.has('Authorization')).toBe(false);
+        expect(headers.has('X-Limrun-Subject-Token')).toBe(false);
+        forms.push(new URLSearchParams(init?.body as string));
+        return Response.json({ access_token: 'limrun-session', token_type: 'Bearer', expires_in: 900 });
+      }
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer limrun-session');
+      return Response.json({ items: [] });
+    });
+  }
+
+  beforeEach(() => {
+    jest.replaceProperty(process, 'env', {
+      ...process.env,
+      LIM_API_KEY: '',
+      LIMRUN_WORKLOAD_IDENTITY_TOKEN: '',
+      LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE: '',
+      LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED: '',
+      LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: '',
+    });
+  });
+
+  test.each([
+    ['explicit option', { workloadTokenInjected: true, bindingId: 'binding_customer' }, {}],
+    [
+      'environment',
+      {},
+      {
+        LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED: 'true',
+        LIMRUN_WORKLOAD_IDENTITY_BINDING_ID: 'binding_customer',
+      },
+    ],
+  ])('exchanges without a subject token from the %s', async (_name, options, env) => {
+    Object.assign(process.env, env);
+    const forms: URLSearchParams[] = [];
+    await new Limrun({ ...options, fetch: injectedFetcher(forms) }).iosInstances.list();
+    expect(forms).toHaveLength(1);
+    expect(forms[0]!.has('subject_token')).toBe(false);
+    expect(forms[0]!.get('audience')).toBe('binding_customer');
+    expect(forms[0]!.get('subject_token_type')).toBe('urn:ietf:params:oauth:token-type:jwt');
+  });
+
+  test('requires a binding', () => {
+    expect(() => new Limrun({ workloadTokenInjected: true })).toThrow(
+      'workloadTokenInjected requires bindingId or LIMRUN_WORKLOAD_IDENTITY_BINDING_ID',
+    );
+  });
+
+  test.each([{ workloadToken: 'jwt' }, { workloadTokenFile: '/var/run/identity/token' }])(
+    'refuses a second identity source %p',
+    (source) => {
+      expect(
+        () => new Limrun({ workloadTokenInjected: true, bindingId: 'binding_customer', ...source }),
+      ).toThrow('workloadTokenInjected cannot be combined');
+    },
+  );
+
+  test('null turns off the environment variable', async () => {
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED'] = 'true';
+    process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID'] = 'binding_customer';
+    expect(() => new Limrun({ workloadTokenInjected: null })).toThrow('Federation requires');
+  });
+
+  test('an API key wins over a conflicting injected configuration', () => {
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED'] = 'true';
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN'] = 'jwt';
+    expect(new Limrun({ apiKey: 'key' }).apiKey).toBe('key');
+  });
 });

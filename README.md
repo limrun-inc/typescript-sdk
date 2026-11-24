@@ -14,6 +14,60 @@ It is generated with [Stainless](https://www.stainless.com/).
 npm install @limrun/api
 ```
 
+## Workload identity federation
+
+Authenticate with a JWT from your identity provider after an organization admin
+creates a [federation binding](https://docs.limrun.com/docs/platform/workload-identity-federation).
+Point the client at a file your runtime keeps current, such as a Kubernetes projected token:
+
+```ts
+const client = new Limrun({
+  workloadTokenFile: '/var/run/identity/token',
+  bindingId: 'binding_REPLACE_WITH_BINDING_ID',
+});
+```
+
+Or pass the JWT itself. A string is exchanged as is on every renewal, so it stops working once
+that JWT expires. Pass a function instead when the client outlives the JWT; the SDK calls it
+for every exchange:
+
+```ts
+const client = new Limrun({
+  workloadToken: async () => getIdTokenFromYourProvider(),
+  bindingId: 'binding_REPLACE_WITH_BINDING_ID',
+});
+```
+
+Some platforms never show the JWT to the workload. Their egress proxy adds it to outbound
+requests instead. Configure the proxy to send the JWT to `sts.limrun.com` in the
+`X-Limrun-Subject-Token` header, and tell the client not to send one:
+
+```ts
+const client = new Limrun({
+  workloadTokenInjected: true,
+  bindingId: 'binding_REPLACE_WITH_BINDING_ID',
+});
+```
+
+If the proxy terminates TLS with its own certificate authority, Node needs it too, for example
+through `NODE_EXTRA_CA_CERTS`.
+
+Alternatively, set `LIMRUN_WORKLOAD_IDENTITY_BINDING_ID` and one of
+`LIMRUN_WORKLOAD_IDENTITY_TOKEN` (the JWT), `LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE`, or
+`LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED=true`, and use
+the default client constructor. Explicit options take precedence over environment variables,
+and a token over a file. An API key takes precedence over workload identity when configured.
+The SDK caches a short-lived Limrun access token and reads the identity again on renewal.
+The access token never outlives the JWT it was exchanged for. `LIMRUN_STS_BASE_URL` overrides
+the default token service at `https://sts.limrun.com`.
+
+The instance's `status.token` grants `control` on that instance. It permits runtime
+operations and reading the instance record, but cannot create, update, or delete
+instance records. Use your configured API key or federated client for those calls,
+with the corresponding `create`, `update`, or `delete` permission. Existing `all`
+grants include both runtime control and lifecycle management. See the
+[permissions reference](https://docs.limrun.com/docs/reference/permissions).
+
 ## Usage
 
 The full API of this library can be found in [api.md](api.md).
