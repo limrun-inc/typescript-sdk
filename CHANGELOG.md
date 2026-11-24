@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.77.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.77.1...v0.77.2) (2026-11-24)
+
+
+### Features
+
+* authenticate with workload identity federation from a token file, a JWT, or a proxy-injected token ([#686](https://github.com/limrun-inc/typescript-sdk/issues/686)) ([f3d5d75](https://github.com/limrun-inc/typescript-sdk/commit/f3d5d757b4bea85f962799be545e47f0b8f02047))
+* **cli:** lim macos create, list, get and delete; release 0.62.0 ([#722](https://github.com/limrun-inc/typescript-sdk/issues/722)) ([5b55e14](https://github.com/limrun-inc/typescript-sdk/commit/5b55e144c4ad19a07b43ae9c46290f52791621f8))
+* copy support ticket replies to CC addresses with ccEmails and supportTickets.setCC ([#730](https://github.com/limrun-inc/typescript-sdk/issues/730)) ([e953ff1](https://github.com/limrun-inc/typescript-sdk/commit/e953ff12a73f62e80716920b3db3a3c4c0c2a8fe))
+
+
+### Bug Fixes
+
+* **cli:** accept iOS 18 for --os-version ([9c0b869](https://github.com/limrun-inc/typescript-sdk/commit/9c0b8697598a852ba16d2578109b922a18ca998a))
+
+
+### Chores
+
+* **cli:** release 0.62.1 ([c708d0c](https://github.com/limrun-inc/typescript-sdk/commit/c708d0cb9bcc7e34d9db29e806b6b15ca892e633))
+* update the Appium iOS example for driver 12.22.8 ([#724](https://github.com/limrun-inc/typescript-sdk/issues/724)) ([4fbac0b](https://github.com/limrun-inc/typescript-sdk/commit/4fbac0ba0c3a7c38ee0b532816dcf313db14c67b))
+
 ## [0.77.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.77.0...v0.77.1) (2026-11-23)
 
 
