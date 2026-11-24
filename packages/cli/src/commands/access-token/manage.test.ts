@@ -128,8 +128,22 @@ test.each([false, true])('revoke extracts jti from an access token (json=%s)', a
   expect(JSON.stringify([calls, json.mock.calls, output.mock.calls])).not.toContain(token);
 });
 
+test("revoke extracts jti from the token service's unprefixed access token", async () => {
+  const token = accessToken({ iss: 'limrun', sub: 'org_01h455vb4pex5vsknk084sn02z', jti: issued.id }).slice(
+    'lim_st_'.length,
+  );
+  const { command, calls } = setup(Revoke, [token, '--json']);
+  await command.run();
+  expect(calls).toEqual([{ path: `/v1/access_tokens/${issued.id}`, method: 'DELETE' }]);
+});
+
 test.each([
   ['an API key', 'lim_not_an_access_token', /Expected an access-token ID/],
+  [
+    'a JWT from another issuer',
+    accessToken({ iss: 'kubernetes', jti: issued.id }).slice('lim_st_'.length),
+    /Expected an access-token ID/,
+  ],
   ['a malformed JWT', 'lim_st_invalid', /Malformed access token/],
   ['a malformed payload', 'lim_st_e30.bm90LWpzb24.c2ln', /Malformed access token/],
   ['a non-object payload', accessToken(null), /JWT claims object/],

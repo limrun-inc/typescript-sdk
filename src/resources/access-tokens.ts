@@ -1,17 +1,54 @@
 import { APIResource } from '../core/resource';
 import { APIPromise } from '../core/api-promise';
+import { LimrunError } from '../core/error';
 import { RequestOptions } from '../internal/request-options';
+
+/**
+ * The Limrun token service mints and revokes access tokens. A client with its own `baseURL`
+ * sends these requests to that URL instead.
+ */
+export const TOKEN_SERVICE_URL = 'https://sts.limrun.com';
 
 export class AccessTokens extends APIResource {
   /** Mint a temporary credential whose permissions are covered by the caller. */
   create(body: AccessTokenCreateParams, options?: RequestOptions): APIPromise<AccessToken> {
-    return this._client.post('/v1/access_tokens', { body, ...options });
+    return this._client
+      .post<AccessToken>('/v1/access_tokens', {
+        body: tokenServiceBody(body),
+        defaultBaseURL: TOKEN_SERVICE_URL,
+        ...options,
+      })
+      ._thenUnwrap(withScopes);
   }
 
   /** Revoke a credential by the ID returned when it was minted. */
   revoke(id: string, options?: RequestOptions): APIPromise<AccessTokenRevokeResponse> {
-    return this._client.delete(`/v1/access_tokens/${encodeURIComponent(id)}`, options);
+    return this._client.delete(`/v1/access_tokens/${encodeURIComponent(id)}`, {
+      defaultBaseURL: TOKEN_SERVICE_URL,
+      ...options,
+    });
   }
+}
+
+/**
+ * The token service accepts only `permissions`, so the deprecated `scopes` alias is
+ * resolved here, with the same rule the API applied: both must name the same set.
+ */
+export function tokenServiceBody({ scopes, ...body }: AccessTokenCreateParams): AccessTokenCreateParams {
+  if (!scopes) return body;
+  if (!body.permissions) return { ...body, permissions: scopes };
+  const permissions = new Set(body.permissions);
+  if (new Set(scopes).size !== permissions.size || scopes.some((scope) => !permissions.has(scope))) {
+    throw new LimrunError('permissions and the deprecated scopes must name the same permissions');
+  }
+  return body;
+}
+
+/** Fills the deprecated `scopes` field, which the token service no longer returns. */
+export function withScopes<T extends { permissions: Array<string>; scopes?: Array<string> }>(
+  token: T,
+): T & { scopes: Array<string> } {
+  return { ...token, scopes: token.scopes ?? token.permissions };
 }
 
 export interface AccessToken {

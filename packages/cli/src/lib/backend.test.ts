@@ -82,6 +82,16 @@ describe('backend client', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it("refuses the token service's unprefixed access token as the API key", async () => {
+      const tokenClient = new Limrun({
+        apiKey: signedToken({ iss: 'limrun', sub: 'org_1', scopes: ['ios:*:all'] }).slice('lim_st_'.length),
+        baseURL: apiEndpoint,
+        maxRetries: 0,
+      });
+      await expect(tunnelOrganization(tokenClient)).rejects.toThrow('--token or LIM_TUNNEL_TOKEN');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('finds a tunnel by name and creates a quick one', async () => {
       fetchMock.mockResolvedValueOnce(
         mockResponse(200, { tunnels: [{ id: 'tunnel_1', name: 'staging', ephemeral: false }] }),
