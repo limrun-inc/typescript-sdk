@@ -11,6 +11,7 @@ import {
   updateTunnelSelectors,
   tunnelTokenClaims,
   whoAmI,
+  fetchWhoAmI,
 } from './backend';
 
 const apiEndpoint = 'https://api.example.test';
@@ -195,6 +196,13 @@ describe('backend client', () => {
     it('adds context to other 403s', async () => {
       fetchMock.mockResolvedValue(mockResponse(403, { message: 'forbidden' }));
       await expect(whoAmI(client)).rejects.toThrow(/^Failed to resolve the organization: /);
+    });
+
+    it('names the caller operation in wrapped errors', async () => {
+      fetchMock.mockResolvedValue(mockResponse(500, { message: 'boom' }));
+      await expect(fetchWhoAmI(client, 'Failed to look up your identity')).rejects.toThrow(
+        /^Failed to look up your identity: /,
+      );
     });
 
     it('fails when no organization is reported', async () => {

@@ -54,11 +54,15 @@ export interface WhoAmIBody {
   memberships?: { organizationId: string; role: string; permissions?: string[]; scopes?: string[] }[];
 }
 
-export async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
+/** `context` names the operation in error messages; organization lookups keep the default. */
+export async function fetchWhoAmI(
+  client: Limrun,
+  context = 'Failed to resolve the organization',
+): Promise<WhoAmIBody> {
   try {
     return await client.get('/v1/whoami');
   } catch (err) {
-    rethrow(err, 'Failed to resolve the organization');
+    rethrow(err, context);
   }
 }
 

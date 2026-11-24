@@ -14,7 +14,7 @@ export default class Whoami extends BaseCommand {
     const { flags } = await this.parse(Whoami);
     this.setParsedFlags(flags);
     await this.withAuth(async () => {
-      const identity = await fetchWhoAmI(this.client);
+      const identity = await fetchWhoAmI(this.client, 'Failed to look up your identity');
       const organization = identity.organization ?? identity.user?.defaultOrganization;
       this.outputJson({
         type: identity.type,

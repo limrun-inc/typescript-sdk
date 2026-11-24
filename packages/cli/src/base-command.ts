@@ -170,7 +170,8 @@ export abstract class BaseCommand extends Command {
         !process.env['LIM_API_KEY'] &&
         (process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN'] ||
           process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'] ||
-          process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED'] ||
+          // The SDK turns injection on only for 1 or true, so any other value keeps the saved login.
+          /^(1|true)$/i.test(process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED']?.trim() ?? '') ||
           process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID']),
     );
   }
@@ -244,6 +245,15 @@ export abstract class BaseCommand extends Command {
 
   protected isJsonEnabled(): boolean {
     return Boolean(this.parsedFlags?.json);
+  }
+
+  // bin/json-errors.cjs reads --json from argv, which misses commands whose JSON output is on by
+  // default. Marking the error lets their failures follow the JSON error contract too.
+  override async catch(err: Parameters<Command['catch']>[0]): Promise<unknown> {
+    if (this.isJsonEnabled() && err && typeof err === 'object') {
+      (err as { jsonOutput?: boolean }).jsonOutput = true;
+    }
+    return super.catch(err);
   }
 
   protected isQuietEnabled(): boolean {

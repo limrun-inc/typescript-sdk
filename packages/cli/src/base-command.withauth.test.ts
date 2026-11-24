@@ -201,6 +201,13 @@ describe('workload identity selection', () => {
     expect(makeCommand().getClient().apiKey).toBeNull();
   });
 
+  it.each(['false', '0', 'no'])('keeps the saved login when the injected flag is %s', (value) => {
+    delete process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'];
+    delete process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID'];
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED'] = value;
+    expect(makeCommand().getClient().apiKey).toBe('lim_saved_login');
+  });
+
   it('uses an injected workload token ahead of a saved login', () => {
     delete process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'];
     process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED'] = 'true';

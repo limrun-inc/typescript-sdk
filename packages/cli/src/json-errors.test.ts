@@ -100,3 +100,16 @@ test('the production entrypoint retains human-readable errors without --json', (
   expect(run.stderr).toContain('Missing');
   expect(run.stderr).toContain('USAGE');
 });
+
+test('an error marked by a JSON-by-default command is JSON without --json in argv', () => {
+  const handlerPath = path.resolve(__dirname, '../bin/json-errors.cjs');
+  const script = `
+    const error = Object.assign(new Error('Failed to look up your identity: forbidden'), { status: 403, jsonOutput: true });
+    require(${JSON.stringify(handlerPath)}).handleJsonError(error, ['whoami']);
+  `;
+  const run = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 5000 });
+  expect(run.status).toBe(1);
+  expect(JSON.parse(run.stderr)).toEqual({
+    error: { code: 'CLI_ERROR', message: 'Failed to look up your identity: forbidden', status: 403 },
+  });
+});

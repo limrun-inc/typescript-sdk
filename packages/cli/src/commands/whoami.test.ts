@@ -57,3 +57,19 @@ test('user memberships keep permissions associated with their organization', asy
   await command.run();
   expect(command.outputJson.mock.calls[0][0].memberships).toEqual(memberships);
 });
+
+test('failures are marked for the JSON error contract because JSON is the default', async () => {
+  const command = Object.create(Whoami.prototype);
+  Object.defineProperty(command, 'parsedFlags', { value: { json: true } });
+  const err = new Error('Failed to look up your identity: forbidden');
+  await expect(command.catch(err)).rejects.toBe(err);
+  expect((err as { jsonOutput?: boolean }).jsonOutput).toBe(true);
+});
+
+test('failures stay human-readable when JSON is off', async () => {
+  const command = Object.create(Whoami.prototype);
+  Object.defineProperty(command, 'parsedFlags', { value: { json: false } });
+  const err = new Error('failed');
+  await expect(command.catch(err)).rejects.toBe(err);
+  expect((err as { jsonOutput?: boolean }).jsonOutput).toBeUndefined();
+});
