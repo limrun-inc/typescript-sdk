@@ -7,17 +7,19 @@ The official command-line interface for [Limrun](https://limrun.com) — create 
 Run `lim whoami` to see the identity, organization, and permissions reported by
 Limrun as JSON. API keys, access tokens, and workload identities are supported.
 
-For workload identity federation, configure the token file and binding:
+For workload identity federation, configure the binding and either a token file or the token:
 
 ```bash
 unset LIM_API_KEY
-export LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE=/var/run/identity/token
 export LIMRUN_WORKLOAD_IDENTITY_BINDING_ID=binding_REPLACE_WITH_BINDING_ID
+export LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE=/var/run/identity/token
+# or: export LIMRUN_WORKLOAD_IDENTITY_TOKEN="$ID_TOKEN"
 lim whoami
 ```
 
-The runtime must keep the JWT file current. The CLI exchanges it for a Limrun token
-and renews before expiry. Explicit `--api-key` and `LIM_API_KEY` values take
+The CLI exchanges the JWT for a Limrun token and renews before expiry, reading the file
+again each time. A token in `LIMRUN_WORKLOAD_IDENTITY_TOKEN` is used as is, so commands
+fail once that JWT expires; it takes precedence over the file. Explicit `--api-key` and `LIM_API_KEY` values take
 precedence over workload identity, which takes precedence over a saved login.
 See [workload identity federation](https://docs.limrun.com/docs/platform/workload-identity-federation)
 for provider and binding setup.

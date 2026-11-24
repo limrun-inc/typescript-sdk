@@ -192,6 +192,15 @@ describe('workload identity selection', () => {
     expect(makeCommand().getClient().apiKey).toBeNull();
   });
 
+  it('uses a workload token from the environment ahead of a saved login', () => {
+    delete process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'];
+    delete process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID'];
+    process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN'] = 'external.jwt';
+    expect(makeCommand().getClient().apiKey).toBeNull();
+    process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID'] = 'binding_test';
+    expect(makeCommand().getClient().apiKey).toBeNull();
+  });
+
   it('keeps explicit API keys ahead of workload identity', () => {
     expect(makeCommand({ 'api-key': 'lim_explicit' }).getClient().apiKey).toBe('lim_explicit');
     process.env['LIM_API_KEY'] = 'lim_env';

@@ -168,7 +168,8 @@ export abstract class BaseCommand extends Command {
     return Boolean(
       !this.parsedFlags?.['api-key'] &&
         !process.env['LIM_API_KEY'] &&
-        (process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'] ||
+        (process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN'] ||
+          process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'] ||
           process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID']),
     );
   }
