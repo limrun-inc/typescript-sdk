@@ -25,7 +25,6 @@ import {
   type DestinationTunnelStatus,
 } from './internal/destination-tunnel-management';
 import { deriveDestinationTunnelURL } from './internal/destination-tunnel-url';
-import { directInstanceErrorReason } from './internal/direct-instance-errors';
 import { LimrunError } from './core/error';
 import {
   startHttpProxy as startLocalHttpProxy,
@@ -1275,7 +1274,8 @@ export type InstanceClient = {
    * same work takes on a device.
    *
    * @throws {AppProfilingUnavailableError} If the instance's runtime predates this.
-   * @throws If the app is not running, or another sample or report is in progress.
+   * @throws An error carrying the HTTP `status` when the instance refuses: 422 if the app is
+   * not running, 409 while another sample or report is in progress.
    */
   sampleStacks: (options?: SampleStacksOptions) => Promise<StackSample>;
 
@@ -1285,7 +1285,8 @@ export type InstanceClient = {
    * you installed can be inspected.
    *
    * @throws {AppProfilingUnavailableError} If the instance's runtime predates this.
-   * @throws If the app is not running, or another sample or report is in progress.
+   * @throws An error carrying the HTTP `status` when the instance refuses: 422 if the app is
+   * not running, 409 while another sample or report is in progress.
    */
   memoryReport: (options?: MemoryReportOptions) => Promise<MemoryReport>;
 
@@ -3350,7 +3351,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
     // The instance ends a profiling tool that overruns `serverSeconds`; the extra ten seconds
     // let its own answer arrive before this side gives up.
-    const profileApp = async <T>(path: string, body: object, serverSeconds: number): Promise<T> => {
+    const profileApp = async <T>(
+      operation: string,
+      path: string,
+      body: object,
+      serverSeconds: number,
+    ): Promise<T> => {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), (serverSeconds + 10) * 1000);
       try {
@@ -3368,23 +3374,43 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         }
         if (!response.ok) {
           const text = await response.text();
-          throw Object.assign(new Error(directInstanceErrorReason(text)), {
-            status: response.status,
-            body: text,
-          });
+          // The instance answers JSON with a message; a proxy in between may answer anything.
+          let message: string | undefined;
+          try {
+            message = (JSON.parse(text) as { message?: string }).message;
+          } catch {}
+          message ||= `${operation} failed: ${response.status} ${text.trim().slice(0, 200)}`.trim();
+          throw Object.assign(new Error(message), { status: response.status, body: text });
         }
         return (await response.json()) as T;
+      } catch (err) {
+        if (controller.signal.aborted) {
+          throw new Error(
+            `${operation} got no answer from the instance within ${serverSeconds + 10} seconds`,
+          );
+        }
+        throw err;
       } finally {
         clearTimeout(timer);
       }
     };
 
-    const sampleStacks = (opts: SampleStacksOptions = {}): Promise<StackSample> =>
-      profileApp('/performance/stacks', opts, (opts.durationSeconds ?? 5) + 30);
+    const sampleStacks = async (opts: SampleStacksOptions = {}): Promise<StackSample> => {
+      const durationSeconds = opts.durationSeconds ?? 5;
+      if (!Number.isInteger(durationSeconds) || durationSeconds < 1 || durationSeconds > 30) {
+        throw new Error('durationSeconds must be an integer between 1 and 30');
+      }
+      return profileApp(
+        'sampleStacks',
+        '/performance/stacks',
+        { bundleId: opts.bundleId, durationSeconds },
+        durationSeconds + 30,
+      );
+    };
 
     // The instance runs three tools, each with a minute to finish.
-    const memoryReport = (opts: MemoryReportOptions = {}): Promise<MemoryReport> =>
-      profileApp('/performance/memory', opts, 180);
+    const memoryReport = async (opts: MemoryReportOptions = {}): Promise<MemoryReport> =>
+      profileApp('memoryReport', '/performance/memory', { bundleId: opts.bundleId }, 180);
 
     const tailSession = <T extends { ts: number }>(
       stream: 'applogs' | 'events',

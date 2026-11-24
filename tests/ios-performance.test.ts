@@ -215,17 +215,64 @@ test('a 404 from the instance says its runtime cannot profile apps', async () =>
   }
 });
 
-test('other refusals carry the instance message and status', async () => {
-  nodeProxyTransport.fetch = jest.fn(async () =>
+test('refusals carry the instance message and status, whatever the body', async () => {
+  const answers = [
     Response.json({ message: 'com.example.app is not running.' }, { status: 422 }),
-  );
+    // A proxy in between answers without the instance's JSON.
+    new Response('', { status: 502 }),
+  ];
+  nodeProxyTransport.fetch = jest.fn(async () => answers.shift()!);
   const client = await connect();
   try {
     await expect(client.sampleStacks({ bundleId: 'com.example.app' })).rejects.toMatchObject({
       message: 'com.example.app is not running.',
       status: 422,
     });
+    await expect(client.memoryReport()).rejects.toMatchObject({
+      message: 'memoryReport failed: 502',
+      status: 502,
+    });
   } finally {
+    client.disconnect();
+  }
+});
+
+test('sampleStacks refuses a duration the instance would refuse, before asking it', async () => {
+  nodeProxyTransport.fetch = jest.fn();
+  const client = await connect();
+  try {
+    for (const durationSeconds of [0, 31, 2.5, Number.NaN]) {
+      await expect(client.sampleStacks({ durationSeconds })).rejects.toThrow(
+        'durationSeconds must be an integer between 1 and 30',
+      );
+    }
+    expect(nodeProxyTransport.fetch).not.toHaveBeenCalled();
+  } finally {
+    client.disconnect();
+  }
+});
+
+// The instance ends an overrunning tool itself, so this side waits ten seconds longer than that.
+test('an instance that never answers ends as a named timeout', async () => {
+  nodeProxyTransport.fetch = jest.fn(
+    (_input: RequestInfo, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init!.signal!.addEventListener('abort', () => reject(new Error('This operation was aborted')));
+      }),
+  );
+  const client = await connect();
+  jest.useFakeTimers();
+  try {
+    const sample = client.sampleStacks({ durationSeconds: 3 });
+    const failure = expect(sample).rejects.toThrow(
+      'sampleStacks got no answer from the instance within 43 seconds',
+    );
+    await jest.advanceTimersByTimeAsync(42_999);
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+    await jest.advanceTimersByTimeAsync(1);
+    await failure;
+  } finally {
+    jest.useRealTimers();
     client.disconnect();
   }
 });
