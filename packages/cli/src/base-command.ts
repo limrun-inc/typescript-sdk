@@ -142,7 +142,10 @@ export abstract class BaseCommand extends Command {
     if (!this._client) {
       const config = readConfig();
       const flags = this.parsedFlags;
-      const apiKey = flags?.['api-key'] || config.apiKey;
+      const apiKey =
+        flags?.['api-key'] ||
+        process.env['LIM_API_KEY'] ||
+        (this.usesWorkloadIdentity() ? null : config.apiKey);
       const baseURL = config.apiEndpoint;
 
       // Without a key, still hand out a client: instance-credential paths
@@ -152,13 +155,25 @@ export abstract class BaseCommand extends Command {
       // "unauthenticated:", which withAuth turns into login guidance or a
       // re-login.
       this._client = new Limrun({
-        apiKey: (apiKey as string) || 'unauthenticated',
+        apiKey: (apiKey as string) || (this.usesWorkloadIdentity() ? null : 'unauthenticated'),
         baseURL,
         userAgent: `lim/${VERSION}`,
         ...(this.shouldSuppressInfo() ? { logLevel: 'warn' as const } : {}),
       });
     }
     return this._client;
+  }
+
+  private usesWorkloadIdentity(): boolean {
+    return Boolean(
+      !this.parsedFlags?.['api-key'] &&
+        !process.env['LIM_API_KEY'] &&
+        (process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN'] ||
+          process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'] ||
+          // The SDK turns injection on only for 1 or true, so any other value keeps the saved login.
+          /^(1|true)$/i.test(process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED']?.trim() ?? '') ||
+          process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID']),
+    );
   }
 
   private _parsedFlags?: Record<string, unknown>;
@@ -230,6 +245,20 @@ export abstract class BaseCommand extends Command {
 
   protected isJsonEnabled(): boolean {
     return Boolean(this.parsedFlags?.json);
+  }
+
+  // bin/json-errors.cjs reads --json from argv, which misses commands whose JSON output is on by
+  // default. Marking the error lets their failures follow the JSON error contract too. A parse
+  // failure arrives before any flags exist, so it falls back to the command's declared default.
+  override async catch(err: Parameters<Command['catch']>[0]): Promise<unknown> {
+    const json =
+      this.parsedFlags ?
+        this.isJsonEnabled()
+      : (this.constructor as { flags?: { json?: { default?: unknown } } }).flags?.json?.default === true;
+    if (json && err && typeof err === 'object') {
+      (err as { jsonOutput?: boolean }).jsonOutput = true;
+    }
+    return super.catch(err);
   }
 
   protected isQuietEnabled(): boolean {
@@ -317,6 +346,8 @@ export abstract class BaseCommand extends Command {
       return await fn();
     } catch (err) {
       if (isLoginRequiredError(err)) {
+        // A browser login must not replace an explicitly configured workload identity.
+        if (this.usesWorkloadIdentity()) throw err;
         const config = readConfig();
         // Without any stored or passed credential the user never logged in;
         // "session expired" would be wrong and auto-login a surprise.

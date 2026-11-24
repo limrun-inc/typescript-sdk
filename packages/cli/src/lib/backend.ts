@@ -1,4 +1,6 @@
-import Limrun, { APIError, AuthenticationError, NotFoundError } from '@limrun/api';
+import Limrun, { APIError, NotFoundError } from '@limrun/api';
+
+import { isLoginRequiredError } from './auth';
 
 /**
  * Backend API endpoints the generated resources do not cover (Stainless
@@ -17,9 +19,12 @@ export type PutSecretResult = {
 
 export const androidSigningKeySecretType = 'androidSigningKey';
 
-/** Wraps transport errors with call context; auth errors pass through untouched. */
+/**
+ * Wraps transport errors with call context. Auth errors pass through untouched, including a 403
+ * that asks for a login, so withAuth can re-login or show its workload identity guidance.
+ */
 function rethrow(err: unknown, context: string): never {
-  if (err instanceof AuthenticationError || !(err instanceof APIError)) {
+  if (isLoginRequiredError(err) || !(err instanceof APIError)) {
     throw err;
   }
   throw new Error(`${context}: ${err.message}`);
@@ -40,16 +45,24 @@ export async function whoAmI(client: Limrun): Promise<string> {
   return organizationId;
 }
 
-interface WhoAmIBody {
-  organization?: { id?: string };
-  user?: { defaultOrganization?: { id?: string } };
+export interface WhoAmIBody {
+  type: string;
+  organization?: { id?: string; displayName?: string };
+  user?: { id?: string; email?: string; defaultOrganization?: { id?: string; displayName?: string } };
+  permissions?: string[];
+  scopes?: string[];
+  memberships?: { organizationId: string; role: string; permissions?: string[]; scopes?: string[] }[];
 }
 
-async function fetchWhoAmI(client: Limrun): Promise<WhoAmIBody> {
+/** `context` names the operation in error messages; organization lookups keep the default. */
+export async function fetchWhoAmI(
+  client: Limrun,
+  context = 'Failed to resolve the organization',
+): Promise<WhoAmIBody> {
   try {
     return await client.get('/v1/whoami');
   } catch (err) {
-    rethrow(err, 'Failed to resolve the organization');
+    rethrow(err, context);
   }
 }
 

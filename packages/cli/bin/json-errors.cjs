@@ -1,7 +1,10 @@
 // Keep parser and command errors machine-readable, including failures before flags are parsed.
+// A command whose JSON output is on by default marks its errors with jsonOutput, since argv alone
+// cannot show that default.
 async function handleJsonError(error, argv = process.argv.slice(2)) {
   const delimiter = argv.indexOf('--');
-  if (!argv.slice(0, delimiter < 0 ? argv.length : delimiter).includes('--json')) return false;
+  const jsonFlag = argv.slice(0, delimiter < 0 ? argv.length : delimiter).includes('--json');
+  if (!jsonFlag && error?.jsonOutput !== true) return false;
   const exitCode = error?.oclif?.exit ?? error?.exitCode ?? 1;
   process.exitCode = exitCode;
   // Explicit exits follow an already-emitted execution result, or a successful early exit.

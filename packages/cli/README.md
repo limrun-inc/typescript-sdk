@@ -2,6 +2,32 @@
 
 The official command-line interface for [Limrun](https://limrun.com) — create and control cloud mobile sandboxes for Android, iOS, and Xcode.
 
+## Check your identity
+
+Run `lim whoami` to see the identity, organization, and permissions reported by
+Limrun as JSON. API keys, access tokens, and workload identities are supported.
+
+For workload identity federation, configure the binding and either a token file or the token:
+
+```bash
+unset LIM_API_KEY
+export LIMRUN_WORKLOAD_IDENTITY_BINDING_ID=binding_REPLACE_WITH_BINDING_ID
+export LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE=/var/run/identity/token
+# or: export LIMRUN_WORKLOAD_IDENTITY_TOKEN="$ID_TOKEN"
+lim whoami
+```
+
+If your platform's egress proxy adds the JWT to requests for `sts.limrun.com` in the
+`X-Limrun-Subject-Token` header, set `LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED=true` instead of a
+token or file. Point `NODE_EXTRA_CA_CERTS` at the proxy's certificate authority if it terminates TLS.
+
+The CLI exchanges the JWT for a Limrun token and renews before expiry, reading the file
+again each time. A token in `LIMRUN_WORKLOAD_IDENTITY_TOKEN` is used as is, so commands
+fail once that JWT expires; it takes precedence over the file. Explicit `--api-key` and `LIM_API_KEY` values take
+precedence over workload identity, which takes precedence over a saved login.
+See [workload identity federation](https://docs.limrun.com/docs/platform/workload-identity-federation)
+for provider and binding setup.
+
 ## Workload permissions
 
 Workload permissions control which resources an instance can access. Assets are
