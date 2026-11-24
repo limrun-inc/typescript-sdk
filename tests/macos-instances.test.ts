@@ -124,6 +124,9 @@ describe('macOS client', () => {
         } else if (req.url!.startsWith('/app-logs?')) {
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ bundleId: 'com.apple.TextEdit', logs: 'one\ntwo' }));
+        } else if (req.url === '/apps/launch') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ bundleId: 'com.example.app', pid: 42, launched: true }));
         } else if (req.url === '/trusted-cas') {
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ sha256: 'ab'.repeat(32) }));
@@ -200,6 +203,10 @@ describe('macOS client', () => {
     await mac.stopRecording('rec-1');
     await expect(mac.stopRecording('Not Valid')).rejects.toThrow('recordingId must match');
 
+    expect(
+      await mac.launchApp('Example', { mode: 'RelaunchIfRunning', arguments: ['-v'], env: { A: 'b' } }),
+    ).toEqual({ bundleId: 'com.example.app', pid: 42, launched: true });
+    await mac.terminateApp('com.example.app');
     expect(await mac.appLogTail('com.apple.TextEdit', 50)).toBe('one\ntwo');
     await mac.startAppLogCapture({ bundleId: 'com.apple.TextEdit', persist: true });
     await mac.stopAppLogCapture();
@@ -214,6 +221,12 @@ describe('macOS client', () => {
       ['POST', '/recordings/stop', {}],
       ['GET', '/files?name=recording_rec-1.mp4', undefined],
       ['POST', '/recordings/rec-1/stop', {}],
+      [
+        'POST',
+        '/apps/launch',
+        { app: 'Example', mode: 'RelaunchIfRunning', arguments: ['-v'], env: { A: 'b' } },
+      ],
+      ['POST', '/apps/terminate', { bundleId: 'com.example.app' }],
       ['GET', '/app-logs?bundleId=com.apple.TextEdit&lines=50', undefined],
       ['POST', '/session/applogs/start', { bundleId: 'com.apple.TextEdit', persist: true }],
       ['POST', '/session/applogs/stop', {}],

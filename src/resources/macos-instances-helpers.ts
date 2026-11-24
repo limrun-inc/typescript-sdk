@@ -66,6 +66,28 @@ export interface MacosRecordingDestination {
 }
 
 /** Handlers of a live stream. `onError` fires at most once, and the stream is then closed. */
+/**
+ * How {@link MacosClient.launchApp} treats an app that already runs: `ForegroundIfRunning` brings
+ * it to the front, `RelaunchIfRunning` stops it and starts it anew.
+ */
+export type MacosLaunchMode = 'ForegroundIfRunning' | 'RelaunchIfRunning';
+
+export interface MacosLaunchAppOptions {
+  /** Defaults to `ForegroundIfRunning`. */
+  mode?: MacosLaunchMode;
+  /** Command-line arguments for the app. */
+  arguments?: string[];
+  /** Environment variables for the app. */
+  env?: Record<string, string>;
+}
+
+export interface MacosLaunchAppResult {
+  bundleId: string;
+  pid: number;
+  /** False when the app already ran and was brought to the front. */
+  launched: boolean;
+}
+
 export interface MacosStreamHandlers<T> {
   onEntry: (entry: T) => void;
   /** Called once the entries the instance replays on connect have all arrived. */
@@ -192,11 +214,26 @@ export interface MacosClient {
    */
   stopRecording(recordingId?: string, saveTo?: MacosRecordingDestination): Promise<string>;
 
-  /** The last `lines` lines an app logged to the unified log in the past hour. */
+  /**
+   * Launch an app by bundle ID (`com.example.app`), name (`TextEdit`) or path
+   * (`/Applications/Safari.app`) and bring it to the front. An app launched this way has its
+   * stdout and stderr in its app log; one started any other way writes them nowhere. Arguments
+   * and environment apply only when the app starts, not when it already runs.
+   */
+  launchApp(app: string, options?: MacosLaunchAppOptions): Promise<MacosLaunchAppResult>;
+
+  /** Stop every process of an app. Succeeds when the app is not running. */
+  terminateApp(bundleId: string): Promise<void>;
+
+  /**
+   * The last `lines` lines of an app's log: its stdout and stderr when it was started with
+   * {@link launchApp}, and what it wrote to the unified log in the past hour, in time order.
+   * For an app that is not Apple's, Apple's frameworks' messages are left out.
+   */
   appLogTail(bundleId: string, lines: number): Promise<string>;
 
   /**
-   * Follow an app's unified log as it is written, one message per `onEntry`. Returns a
+   * Follow an app's log, as {@link appLogTail} reads it, one line per `onEntry`. Returns a
    * function that stops it.
    */
   streamAppLog(bundleId: string, handlers: MacosStreamHandlers<string>): () => void;
@@ -406,6 +443,23 @@ class MacosInstancesHelpers extends MacosInstances {
         const downloadUrl = `${apiUrl}/files?name=${encodeURIComponent(`recording_${stopped}.mp4`)}`;
         if (saveTo.localPath) await downloadFileToLocalPath(downloadUrl, token, saveTo.localPath);
         return downloadUrl;
+      },
+
+      async launchApp(app, options) {
+        const response = await request('/apps/launch', {
+          method: 'POST',
+          body: {
+            app,
+            ...(options?.mode !== undefined && { mode: options.mode }),
+            ...(options?.arguments !== undefined && { arguments: options.arguments }),
+            ...(options?.env !== undefined && { env: options.env }),
+          },
+        });
+        return (await response.json()) as MacosLaunchAppResult;
+      },
+
+      async terminateApp(bundleId) {
+        await request('/apps/terminate', { method: 'POST', body: { bundleId } });
       },
 
       async appLogTail(bundleId, lines) {

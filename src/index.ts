@@ -183,6 +183,9 @@ export {
   type MacosRecordingOptions,
   type MacosRecordingDestination,
   type MacosStreamHandlers,
+  type MacosLaunchMode,
+  type MacosLaunchAppOptions,
+  type MacosLaunchAppResult,
 } from './resources/macos-instances-helpers';
 export { type AssetUploadOptions } from './resources/daemon-client-shared';
 export {
