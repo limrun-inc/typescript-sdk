@@ -248,9 +248,14 @@ export abstract class BaseCommand extends Command {
   }
 
   // bin/json-errors.cjs reads --json from argv, which misses commands whose JSON output is on by
-  // default. Marking the error lets their failures follow the JSON error contract too.
+  // default. Marking the error lets their failures follow the JSON error contract too. A parse
+  // failure arrives before any flags exist, so it falls back to the command's declared default.
   override async catch(err: Parameters<Command['catch']>[0]): Promise<unknown> {
-    if (this.isJsonEnabled() && err && typeof err === 'object') {
+    const json =
+      this.parsedFlags ?
+        this.isJsonEnabled()
+      : (this.constructor as { flags?: { json?: { default?: unknown } } }).flags?.json?.default === true;
+    if (json && err && typeof err === 'object') {
       (err as { jsonOutput?: boolean }).jsonOutput = true;
     }
     return super.catch(err);

@@ -73,3 +73,10 @@ test('failures stay human-readable when JSON is off', async () => {
   await expect(command.catch(err)).rejects.toBe(err);
   expect((err as { jsonOutput?: boolean }).jsonOutput).toBeUndefined();
 });
+
+test('parse failures are marked too, before any flags exist', async () => {
+  const command = Object.create(Whoami.prototype);
+  const err = new Error('Nonexistent flag: --bogus');
+  await expect(command.catch(err)).rejects.toBe(err);
+  expect((err as { jsonOutput?: boolean }).jsonOutput).toBe(true);
+});
