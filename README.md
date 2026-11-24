@@ -214,6 +214,41 @@ import { RemoteControl } from '@limrun/ui';
 `status.streamToken` instead. It opens the stream, including keyboard and mouse input, but
 not the instance's API.
 
+To work inside the guest, create a client for the instance. It runs shell commands as the guest's
+user, turns on SSH for a public key and forwards local ports into the guest, and drives the screen:
+
+```ts
+const guest = await client.macosInstances.createClient({ instance: mac });
+const result = await guest.run('sw_vers -productVersion');
+await guest.enableSsh(publicKey);
+const tunnel = await guest.startPortForward(2222, 22); // then: ssh -p 2222 limrun@localhost
+await guest.tap({ x: 640, y: 360 });
+await guest.typeText('hello');
+```
+
+A disk snapshot keeps the guest's changes between instances. It is an asset of kind
+`MacOSSnapshot`, so the instance's role grants it like any asset: read on the names it restores
+from, and create, upload and update on the name it saves under. Restore once the instance is ready;
+the instance saves under `key` when it terminates:
+
+```ts
+const mac = await client.macosInstances.create({
+  wait: true,
+  spec: {
+    role: {
+      permissions: [
+        'asset:name/my-mac*:read',
+        'asset:name/my-mac:create',
+        'asset:name/my-mac:upload',
+        'asset:name/my-mac:update',
+      ],
+    },
+  },
+});
+const guest = await client.macosInstances.createClient({ instance: mac });
+await guest.restoreSnapshot({ key: 'my-mac', onProgress: (p) => console.log(p.phase, p.doneBytes) });
+```
+
 Delete the instance when you are done with `client.macosInstances.delete(mac.metadata.id)`.
 
 ## Handling errors

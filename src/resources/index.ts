@@ -124,6 +124,17 @@ export {
   type GradleBuildOptions,
   type GradleBuildLog,
 } from './gradle-instances-helpers';
+// Side-effect import, as for Gradle: grafts createClient onto MacosInstances.
+import './macos-instances-helpers';
+export {
+  type MacosCreateClientParams,
+  type MacosClient,
+  type MacosPoint,
+  type MacosModifier,
+  type MacosSshAccess,
+  type MacosSnapshotRestoreOptions,
+  type MacosSnapshotProgress,
+} from './macos-instances-helpers';
 
 export {
   AccessTokens,

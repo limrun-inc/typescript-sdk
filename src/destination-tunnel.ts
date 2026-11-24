@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import net from 'net';
-import { domainToASCII } from 'url';
+// A default import: browsers bundle this module (through the macOS client) and only Node runs it.
+import url from 'url';
 import {
   DestinationTunnelProtocolError,
   readArray,
@@ -637,7 +638,7 @@ function canonicalizeDestinationTunnelDomain(domain: string): string {
   if (base.endsWith('.') || base.startsWith('.')) invalid();
   if (net.isIP(base) !== 0) invalid();
   if (base === 'localhost') invalid();
-  if (domainToASCII(base) !== base) invalid();
+  if (url.domainToASCII(base) !== base) invalid();
   const labels = base.split('.');
   for (const label of labels) {
     if (label.length === 0 || label.length > 63) invalid();

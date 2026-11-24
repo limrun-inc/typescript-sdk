@@ -104,6 +104,9 @@ export namespace MacosInstance {
 
     /** Current effective permissions. Present on live GETs; historical records may omit it. */
     role?: { permissions: string[] };
+
+    /** The private tunnel the instance named at create. */
+    tunnel?: string;
   }
 
   export interface Status {
@@ -145,6 +148,26 @@ export namespace MacosInstance {
      *   details when available.
      */
     terminationReason?: string;
+
+    /**
+     * The disk snapshot save the instance runs when it terminates, under the key a client gave
+     * `restoreSnapshot`. Absent until the instance is deleted.
+     */
+    snapshot?: {
+      save?: {
+        phase:
+          | 'requested'
+          | 'archiving'
+          | 'uploading'
+          | 'published'
+          | 'skipped'
+          | 'failed'
+          | 'timed_out'
+          | string;
+        reason?: string;
+        message?: string;
+      };
+    };
   }
 }
 
@@ -237,6 +260,13 @@ export namespace MacosInstanceCreateParams {
       /** Asset permissions delegated by the creator. An empty array grants nothing. */
       permissions: Array<string>;
     };
+
+    /**
+     * Names a private tunnel, created in the console (Network) or the API, that
+     * serves this instance. Creation fails while no connector (`lim tunnel run`)
+     * holds it, and the instance becomes ready only after the tunnel attaches.
+     */
+    tunnel?: string;
   }
 
   export namespace Spec {

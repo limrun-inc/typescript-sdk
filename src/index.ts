@@ -171,6 +171,22 @@ export {
   type GradleRunOptions,
   type GradleBuildLog,
 } from './resources/gradle-instances-helpers';
+export {
+  type MacosCreateClientParams,
+  type MacosClient,
+  type MacosPoint,
+  type MacosModifier,
+  type MacosSshAccess,
+  type MacosSnapshotRestoreOptions,
+  type MacosSnapshotProgress,
+  type MacosTunnelOptions,
+  type MacosRecordingOptions,
+  type MacosRecordingDestination,
+  type MacosStreamHandlers,
+  type MacosLaunchMode,
+  type MacosLaunchAppOptions,
+  type MacosLaunchAppResult,
+} from './resources/macos-instances-helpers';
 export { type AssetUploadOptions } from './resources/daemon-client-shared';
 export {
   type SessionArtifact,
