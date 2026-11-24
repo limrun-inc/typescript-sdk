@@ -137,4 +137,5 @@ Methods:
 
 # SupportTickets
 
-- <code title="post /v1/organizations/{organizationId}/support_tickets">client.supportTickets.<a href="./src/resources/support-tickets.ts">create</a>(organizationId, { kind, subject, message }, { idempotencyKey }) -> SupportTicket</code>
+- <code title="post /v1/organizations/{organizationId}/support_tickets">client.supportTickets.<a href="./src/resources/support-tickets.ts">create</a>(organizationId, { kind, subject, message, ccEmails? }, { idempotencyKey }) -> SupportTicket</code>
+- <code title="patch /v1/organizations/{organizationId}/support_tickets/{ticketId}">client.supportTickets.<a href="./src/resources/support-tickets.ts">setCC</a>(organizationId, ticketId, ccEmails) -> void</code>
