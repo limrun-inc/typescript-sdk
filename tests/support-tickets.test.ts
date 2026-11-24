@@ -36,6 +36,7 @@ test('clears the CC list on one organization ticket', async () => {
         'https://api.example.test/v1/organizations/org_test/support_tickets/ticket_test',
       );
       expect(init?.method).toBe('PATCH');
+      expect(new Headers(init?.headers).get('Accept')).toBe('*/*');
       expect(JSON.parse(String(init?.body))).toEqual({ ccEmails: [] });
       return new Response(null, { status: 204 });
     },

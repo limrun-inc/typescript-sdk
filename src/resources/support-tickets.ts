@@ -45,6 +45,7 @@ export class SupportTickets extends APIResource {
     return this._client.patch(path`/v1/organizations/${organizationId}/support_tickets/${ticketId}`, {
       ...options,
       body: { ccEmails },
+      headers: buildHeaders([{ Accept: '*/*' }, options?.headers]),
     });
   }
 }
