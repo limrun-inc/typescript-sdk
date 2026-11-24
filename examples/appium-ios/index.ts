@@ -26,6 +26,9 @@ const instance = await limrun.iosInstances.create({
         source: 'AssetName',
         // A simulator build of WebDriverAgent that Limrun hosts for every organization.
         assetName: 'appstore/WebDriverAgentRunner-16.15.3.zip',
+        // To install a WebDriverAgent build from anywhere else, use a URL instead:
+        // source: 'URL',
+        // url: 'https://github.com/appium/WebDriverAgent/releases/download/v10.4.5/WebDriverAgentRunner-Build-Sim-arm64.zip',
         launchMode: 'ForegroundIfRunning',
       },
     ],
