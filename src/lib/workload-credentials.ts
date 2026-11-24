@@ -3,8 +3,13 @@ import type { MergedRequestInit } from '../internal/types';
 /** A workload JWT, or a function that returns the current one on every exchange. */
 export type WorkloadToken = string | (() => string | Promise<string>);
 
-/** Returns the identity JWT to exchange, read again for every exchange. */
-export type WorkloadIdentityReader = () => Promise<string>;
+/**
+ * Returns the identity JWT to exchange, read again for every exchange. Null means an egress proxy
+ * adds the JWT to the exchange request, so the client sends none.
+ */
+export type WorkloadIdentityReader = () => Promise<string | null>;
+
+export const injectedWorkloadIdentityReader: WorkloadIdentityReader = async () => null;
 
 export function workloadTokenReader(token: WorkloadToken): WorkloadIdentityReader {
   return async () => (typeof token === 'function' ? await token() : token);
@@ -41,8 +46,11 @@ export class WorkloadCredentials {
 
   private async exchange(): Promise<string> {
     const identity = await this.readIdentity();
-    const jwt = typeof identity === 'string' ? identity.trim() : '';
-    if (!jwt || jwt.length > 32768)
+    const jwt =
+      identity === null ? undefined
+      : typeof identity === 'string' ? identity.trim()
+      : '';
+    if (jwt !== undefined && (!jwt || jwt.length > 32768))
       throw new Error('Workload identity token must be a JWT of at most 32768 characters');
     const start = Date.now();
     const response = await this.fetcher(`${this.endpoint.replace(/\/$/, '')}/v1/access_tokens`, {
@@ -57,7 +65,7 @@ export class WorkloadCredentials {
           new URLSearchParams({
             grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange',
             subject_token_type: 'urn:ietf:params:oauth:token-type:jwt',
-            subject_token: jwt,
+            ...(jwt !== undefined && { subject_token: jwt }),
             audience: this.bindingId,
           }).toString()
         : JSON.stringify({}),
