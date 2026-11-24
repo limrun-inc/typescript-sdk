@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../base-command';
 
-function ticketIdempotencyKey(body: { kind: string; subject: string; message: string }): string {
+function ticketIdempotencyKey(body: {
+  kind: string;
+  subject: string;
+  message: string;
+  ccEmails?: string[];
+}): string {
   const hash = createHash('sha256').update(JSON.stringify(body)).digest();
   // Encode the first 128 bits as a UUIDv8 for the support API.
   hash[6] = (hash.readUInt8(6) & 0x0f) | 0x80;
@@ -26,6 +31,10 @@ export default class SupportCreate extends BaseCommand {
     org: Flags.string({ description: 'Organization TypeID (org_...).', required: true }),
     subject: Flags.string({ description: 'Ticket subject.', required: true }),
     message: Flags.string({ description: 'Message for Limrun support.', required: true }),
+    cc: Flags.string({
+      description: 'Email address to notify when support replies. Repeat for multiple recipients.',
+      multiple: true,
+    }),
     'idempotency-key': Flags.string({
       description: 'UUID for this event. Defaults to a hash of the ticket payload.',
     }),
@@ -34,7 +43,13 @@ export default class SupportCreate extends BaseCommand {
   async run(): Promise<void> {
     const { flags } = await this.parse(SupportCreate);
     this.setParsedFlags(flags);
-    const body = { kind: 'ticket', subject: flags.subject, message: flags.message };
+    const ccEmails = flags.cc?.map((address) => address.trim());
+    const body = {
+      kind: 'ticket',
+      subject: flags.subject,
+      message: flags.message,
+      ccEmails: ccEmails && [...new Set(ccEmails)].sort(),
+    };
     const key = flags['idempotency-key'] ?? ticketIdempotencyKey(body);
     await this.withAuth(async () => {
       const ticket = await this.client.post<{ id: string }>(
