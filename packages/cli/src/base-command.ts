@@ -170,6 +170,7 @@ export abstract class BaseCommand extends Command {
         !process.env['LIM_API_KEY'] &&
         (process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN'] ||
           process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'] ||
+          process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED'] ||
           process.env['LIMRUN_WORKLOAD_IDENTITY_BINDING_ID']),
     );
   }

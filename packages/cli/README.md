@@ -17,6 +17,10 @@ export LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE=/var/run/identity/token
 lim whoami
 ```
 
+If your platform's egress proxy adds the JWT to requests for `sts.limrun.com` in the
+`X-Limrun-Subject-Token` header, set `LIMRUN_WORKLOAD_IDENTITY_TOKEN_INJECTED=true` instead of a
+token or file. Point `NODE_EXTRA_CA_CERTS` at the proxy's certificate authority if it terminates TLS.
+
 The CLI exchanges the JWT for a Limrun token and renews before expiry, reading the file
 again each time. A token in `LIMRUN_WORKLOAD_IDENTITY_TOKEN` is used as is, so commands
 fail once that JWT expires; it takes precedence over the file. Explicit `--api-key` and `LIM_API_KEY` values take
