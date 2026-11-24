@@ -1,4 +1,5 @@
 import { nodeProxyTransport } from '../internal/proxy-transport';
+import { directInstanceErrorReason } from '../internal/direct-instance-errors';
 import { instanceToken } from '../instance-token';
 import { startTcpTunnel, type TcpTunnelOptions, type Tunnel } from '../tunnel';
 import { type ExecChildProcess } from '../exec-client';
@@ -354,14 +355,8 @@ class MacosInstancesHelpers extends MacosInstances {
         ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
       });
       if (!response.ok) {
-        const text = await response.text();
-        let message = text;
-        try {
-          message = (JSON.parse(text) as { reason?: string; message?: string }).reason ?? message;
-        } catch {
-          // Not JSON; keep the text.
-        }
-        throw new Error(`${init.method} ${path} failed: ${response.status} ${message}`.trim());
+        const reason = directInstanceErrorReason(await response.text());
+        throw new Error(`${init.method} ${path} failed: ${response.status} ${reason}`.trim());
       }
       return response;
     }

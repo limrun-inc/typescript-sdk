@@ -127,6 +127,10 @@ describe('macOS client', () => {
         } else if (req.url === '/apps/launch') {
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ bundleId: 'com.example.app', pid: 42, launched: true }));
+        } else if (req.url === '/apps/terminate' && raw.includes('com.missing')) {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ message: 'no app com.missing is installed' }));
         } else if (req.url === '/trusted-cas') {
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ sha256: 'ab'.repeat(32) }));
@@ -207,6 +211,9 @@ describe('macOS client', () => {
       await mac.launchApp('Example', { mode: 'RelaunchIfRunning', arguments: ['-v'], env: { A: 'b' } }),
     ).toEqual({ bundleId: 'com.example.app', pid: 42, launched: true });
     await mac.terminateApp('com.example.app');
+    await expect(mac.terminateApp('com.missing')).rejects.toThrow(
+      'POST /apps/terminate failed: 404 no app com.missing is installed',
+    );
     expect(await mac.appLogTail('com.apple.TextEdit', 50)).toBe('one\ntwo');
     await mac.startAppLogCapture({ bundleId: 'com.apple.TextEdit', persist: true });
     await mac.stopAppLogCapture();
@@ -227,6 +234,7 @@ describe('macOS client', () => {
         { app: 'Example', mode: 'RelaunchIfRunning', arguments: ['-v'], env: { A: 'b' } },
       ],
       ['POST', '/apps/terminate', { bundleId: 'com.example.app' }],
+      ['POST', '/apps/terminate', { bundleId: 'com.missing' }],
       ['GET', '/app-logs?bundleId=com.apple.TextEdit&lines=50', undefined],
       ['POST', '/session/applogs/start', { bundleId: 'com.apple.TextEdit', persist: true }],
       ['POST', '/session/applogs/stop', {}],
