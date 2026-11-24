@@ -10,29 +10,36 @@ import {
   sendSessionCommand,
 } from '../../lib/instance-client-factory';
 
-export default class IosInstallApp extends BaseCommand {
+export default class IosInstall extends BaseCommand {
+  static aliases = ['ios:install-app'];
+
   static summary = 'Install an app on a running iOS instance';
   static description =
-    'Install an app from a local file path or remote URL onto a running iOS instance. Local files are uploaded to Limrun asset storage automatically before installation.';
+    'Install an app from a local file path, asset name, or remote URL onto a running iOS instance. Local files are uploaded to Limrun asset storage automatically before installation. Named installs add a missing asset read grant to the instance role.';
 
   static examples = [
-    '<%= config.bin %> ios install-app ./MyApp.ipa',
-    '<%= config.bin %> ios install-app https://example.com/MyApp.ipa --json',
-    '<%= config.bin %> ios install-app ./MyApp.ipa --id <instance-ID>',
-    '<%= config.bin %> ios install-app ./MyApp.ipa --launch-mode RelaunchIfRunning',
-    '<%= config.bin %> ios install-app https://example.com/MyApp.ipa --md5 <hex-digest>',
+    '<%= config.bin %> ios install --asset-name releases/app.zip',
+    '<%= config.bin %> ios install ./MyApp.ipa',
+    '<%= config.bin %> ios install https://example.com/MyApp.ipa --json',
+    '<%= config.bin %> ios install ./MyApp.ipa --id <instance-ID>',
+    '<%= config.bin %> ios install ./MyApp.ipa --launch-mode RelaunchIfRunning',
+    '<%= config.bin %> ios install https://example.com/MyApp.ipa --md5 <hex-digest>',
   ];
 
   static args = {
     path_or_url: Args.string({
       description:
         'Local app path (an archive such as .ipa/.zip/.tar.gz, or an .app directory) or remote URL to an installable iOS package',
-      required: true,
+      required: false,
     }),
   };
 
   static flags = {
     ...BaseCommand.baseFlags,
+    'asset-name': Flags.string({
+      description: 'Install an existing asset by exact name, granting instance read permission if needed.',
+      exclusive: ['asset-ttl'],
+    }),
     id: Flags.string({
       description: 'iOS instance ID to install the app on. Defaults to the last created iOS instance.',
     }),
@@ -50,21 +57,27 @@ export default class IosInstallApp extends BaseCommand {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(IosInstallApp);
+    const { args, flags } = await this.parse(IosInstall);
     this.setParsedFlags(flags);
+    if (Boolean(args.path_or_url) === Boolean(flags['asset-name'])) {
+      this.error('Provide a local path or URL, or --asset-name, but not both.');
+    }
 
     await this.withAuth(async () => {
       const resolvedInstance = this.resolveIosInstance(flags.id);
       const id = resolvedInstance.id;
       if (false) {
-        this.error('ios install-app only supports iOS instances');
+        this.error('ios install only supports iOS instances');
       }
 
-      let downloadUrl: string;
-      if (args.path_or_url.startsWith('http://') || args.path_or_url.startsWith('https://')) {
-        downloadUrl = args.path_or_url;
-      } else {
-        const filePath = path.resolve(args.path_or_url);
+      let downloadUrl: string | undefined;
+      let assetName = flags['asset-name'];
+      let assetId: string | undefined;
+      const source = args.path_or_url;
+      if (source?.startsWith('http://') || source?.startsWith('https://')) {
+        downloadUrl = source;
+      } else if (source) {
+        const filePath = path.resolve(source);
         if (!fs.existsSync(filePath)) {
           this.error(`File not found: ${filePath}`);
         }
@@ -87,7 +100,8 @@ export default class IosInstallApp extends BaseCommand {
             name,
             ttl: flags['asset-ttl'],
           });
-          downloadUrl = asset.signedDownloadUrl;
+          assetName = asset.name;
+          assetId = asset.id;
         } finally {
           if (tmpDir) {
             fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -105,19 +119,35 @@ export default class IosInstallApp extends BaseCommand {
         };
       }
 
+      if (assetName) await this.ensureInstallPermissions(id, assetName, assetId);
+
       if (await ensureDaemonSession(resolvedInstance)) {
-        const result = await sendSessionCommand(id, 'install-app', [downloadUrl, installOptions]);
-        if (flags.json) {
-          this.outputJson(result);
-        } else {
-          this.log('App installed');
+        try {
+          const result = await sendSessionCommand(
+            id,
+            assetName ? 'install-app-by-name' : 'install-app',
+            [assetName ?? downloadUrl, installOptions],
+            120_000,
+          );
+          if (flags.json) {
+            this.outputJson(result);
+          } else {
+            this.log('App installed');
+          }
+          return;
+        } catch (err) {
+          // Older background sessions cannot dispatch named installs; connect directly instead.
+          if (!assetName || !(err instanceof Error) || err.message !== 'Unknown command: install-app-by-name')
+            throw err;
         }
-        return;
       }
 
       const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
       try {
-        const result = await client.installApp(downloadUrl, installOptions);
+        const result =
+          assetName ?
+            await client.installAppByName(assetName, installOptions)
+          : await client.installApp(downloadUrl!, installOptions);
         if (flags.json) {
           this.outputJson(result);
         } else {

@@ -931,7 +931,35 @@ export abstract class BaseCommand extends Command {
     if (required.length) await this.ensureInstancePermissions(id, required);
   }
 
-  protected async ensureInstancePermissions(id: string, required: string[]): Promise<void> {
+  protected async ensureInstallPermissions(id: string, name: string, assetId?: string): Promise<void> {
+    const named = `asset:name/${name}:read`;
+    const required = name.startsWith('appstore/') ? 'asset:*:read' : named;
+    await this.ensureInstancePermissions(id, (existing) => {
+      if (
+        existing.some(
+          (grant) =>
+            permissionCovers(grant, required) ||
+            (!name.startsWith('appstore/') && assetId && permissionCovers(grant, `asset:${assetId}:read`)),
+        )
+      )
+        return [];
+      // Catalog reads require a wildcard; automatic grants must stay scoped to one asset.
+      if (name.startsWith('appstore/'))
+        throw new Error(
+          'Catalog installs require asset:*:read on the instance. Grant it explicitly before installing.',
+        );
+      if (/[*?]/.test(name))
+        throw new Error(
+          'Asset names containing * or ? require an existing read grant; automatic permissions would grant a pattern.',
+        );
+      return [named];
+    });
+  }
+
+  protected async ensureInstancePermissions(
+    id: string,
+    required: string[] | ((existing: string[]) => string[]),
+  ): Promise<void> {
     const resources = {
       xcode: this.client.xcodeInstances,
       gradle: this.client.gradleInstances,
@@ -946,9 +974,10 @@ export abstract class BaseCommand extends Command {
       if (!etag || !existing || instance.status.state === 'terminated') {
         this.error('This instance has no editable live role. Update the server or select a live instance.');
       }
-      if (required.every((permission) => existing.some((granted) => permissionCovers(granted, permission))))
+      const missing = typeof required === 'function' ? required(existing) : required;
+      if (missing.every((permission) => existing.some((granted) => permissionCovers(granted, permission))))
         return;
-      const permissions = [...new Set([...existing, ...required])];
+      const permissions = [...new Set([...existing, ...missing])];
       try {
         await instances.update(id, { ifMatch: etag, spec: { role: { permissions } } });
         return;

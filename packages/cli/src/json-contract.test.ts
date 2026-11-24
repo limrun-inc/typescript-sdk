@@ -307,7 +307,7 @@ describe.each([false, true])('device actions with daemon=%s', (session) => {
   });
   test.each([true, false])('Android install result identifies its source, local=%s', async (local) => {
     const source = local ? '/tmp/app.apk' : 'https://example.test/app.apk';
-    const c = command('android/install-app', { path_or_url: source });
+    const c = command('android/install', { path_or_url: source });
     jest.spyOn(require('fs'), 'existsSync').mockReturnValue(true);
     c.client.assets.getOrUpload = jest
       .fn()
