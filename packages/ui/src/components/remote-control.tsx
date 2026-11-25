@@ -387,7 +387,8 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
       landscape: { widthMultiplier: 0.962 },
     },
   },
-  // A macOS virtual machine is a desktop display: no device frame around it.
+  // A macOS virtual machine is a desktop display. Its MacBook Pro frame is drawn in CSS around
+  // whatever size the guest display has; see MACBOOK below.
   macos: {
     videoBorderRadiusMultiplier: 0,
     loadingLogoSize: '10%',
@@ -422,6 +423,24 @@ const iosModelConfig: Record<FramedIOSModel, DeviceConfig> = {
     },
   },
 };
+
+// The MacBook Pro drawn around a macOS guest, in hundredths of the screen's width. The lid's bezel
+// wraps the screen, and the base below it is wider than the lid. Each value must match the
+// .rc-macbook rules in remote-control.css.
+const MACBOOK = {
+  sideBezel: 1.7,
+  topBezel: 2.4,
+  chin: 2.4,
+  baseHeight: 2.2,
+  baseOverhang: 4,
+  screenRadius: 0.9,
+};
+const MACBOOK_WIDTH = 100 + 2 * MACBOOK.sideBezel + 2 * MACBOOK.baseOverhang;
+const MACBOOK_EXTRA_HEIGHT = MACBOOK.topBezel + MACBOOK.chin + MACBOOK.baseHeight;
+// The frame is centered in the container, and the screen sits this far above the frame's center.
+const MACBOOK_SCREEN_RAISE = (MACBOOK_EXTRA_HEIGHT - 2 * MACBOOK.topBezel) / 2;
+// A guest that has not sent video yet is laid out at this shape.
+const MACBOOK_PLACEHOLDER_ASPECT = 16 / 10;
 
 // The tablet artwork has a 1600 × 2560 screen opening in an 1837 × 2798 frame.
 // Phone insets enlarge the video behind its wider bezel and hide the screen edges.
@@ -525,6 +544,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const [homeButtonStyle, setHomeButtonStyle] = useState<React.CSSProperties | null>(null);
+    const [macbookStyle, setMacbookStyle] = useState<React.CSSProperties | null>(null);
     const lastVideoSize = useRef<{ width: number; height: number } | null>(null);
     // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
@@ -638,6 +658,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
     const frameVisible = !isDuo && showFrame && !!frameImageSrc;
+    // A macOS guest's MacBook is drawn in CSS, so it needs no artwork and the lite entry draws it too.
+    const macbookVisible = platform === 'macos' && showFrame;
 
     const clientRef = useRef<DeviceStream | null>(null);
     const sendBinaryControlMessage = (data: ArrayBuffer) => clientRef.current?.sendControl(data);
@@ -1933,12 +1955,44 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         setVideoStyle((current) => (sameStyle(current, next) ? current : next));
       const updateHomeButtonStyle = (next: React.CSSProperties | null) =>
         setHomeButtonStyle((current) => (current && next && sameStyle(current, next) ? current : next));
+      const updateMacbookStyle = (next: React.CSSProperties | null) =>
+        setMacbookStyle((current) => (current && next && sameStyle(current, next) ? current : next));
 
       const updateVideoPosition = () => {
         const hasVideoSize = video.videoWidth > 0 && video.videoHeight > 0;
         if (hasVideoSize) lastVideoSize.current = { width: video.videoWidth, height: video.videoHeight };
         const size = lastVideoSize.current;
         const aspectRatio = size ? `${size.width} / ${size.height}` : undefined;
+        // The MacBook takes the stream's shape, so the largest screen whose frame fits the container
+        // sets both the video's size and the frame's.
+        if (macbookVisible && container) {
+          const aspect = size ? size.width / size.height : MACBOOK_PLACEHOLDER_ASPECT;
+          const fitWidth = (container.clientWidth * 100) / MACBOOK_WIDTH;
+          const fitHeight = container.clientHeight / (1 / aspect + MACBOOK_EXTRA_HEIGHT / 100);
+          // A container whose height follows its content puts no limit on the height.
+          const screenWidth = container.clientHeight > 0 ? Math.min(fitWidth, fitHeight) : fitWidth;
+          if (screenWidth <= 0) return;
+          const unit = screenWidth / 100;
+          const screenHeight = screenWidth / aspect;
+          const radius = `${unit * MACBOOK.screenRadius}px`;
+          updateVideoStyle({
+            aspectRatio: `${aspect}`,
+            width: `${screenWidth}px`,
+            height: `${screenHeight}px`,
+            borderRadius: `${radius} ${radius} 0 0`,
+            transform: `translate(-50%, calc(-50% - ${unit * MACBOOK_SCREEN_RAISE}px))`,
+          });
+          updateMacbookStyle({
+            width: `${unit * MACBOOK_WIDTH}px`,
+            height: `${screenHeight + unit * MACBOOK_EXTRA_HEIGHT}px`,
+            ['--rc-macbook-unit' as string]: `${unit}px`,
+          });
+          updateHomeButtonStyle(null);
+          recomputeOverlayGeometry();
+          return;
+        }
+        updateMacbookStyle(null);
+
         // If no frame, just refresh overlay geometry; no inset/letterbox math
         // is needed since the video element is its own size.
         if (!frameVisible || !frame) {
@@ -2038,7 +2092,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         video.removeEventListener('resize', bumpOnResize);
         if (frame) frame.removeEventListener('load', updateVideoPosition);
       };
-    }, [config, frameVisible, url, deviceModel]);
+    }, [config, frameVisible, macbookVisible, url, deviceModel]);
 
     // Reset overlay selection when inspection is disabled; place the overlay when it starts.
     useEffect(() => {
@@ -2177,6 +2231,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             draggable={false}
           />
         )}
+        {macbookVisible && macbookStyle && (
+          <div className="rc-macbook" style={macbookStyle} aria-hidden="true">
+            <div className="rc-macbook-lid">
+              <div className="rc-macbook-camera" />
+            </div>
+            <div className="rc-macbook-base" />
+          </div>
+        )}
         {frameVisible && homeButtonStyle && !watchOnly && (
           <button
             type="button"
@@ -2207,7 +2269,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           ref={videoRef}
           className={[
             'rc-video',
-            !frameVisible && 'rc-video-frameless',
+            !frameVisible && !macbookVisible && 'rc-video-frameless',
             !videoLoaded && (platform === 'macos' ? 'rc-video-loading-desktop' : 'rc-video-loading'),
           ]
             .filter(Boolean)

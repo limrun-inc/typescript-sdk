@@ -10,8 +10,9 @@ See [examples](../../examples/) to see how it can be used.
 
 `@limrun/ui` bundles Limrun's device frames and boot logos as inline images, about
 600 KB. Embeds that render the bare screen can import `@limrun/ui/lite` instead: the same
-`RemoteControl` API without any artwork, so `showFrame` has nothing to draw and the boot
+`RemoteControl` API without any artwork, so `showFrame` has no phone frame to draw and the boot
 logo is omitted. Pass your own images through the `assets` prop if you want frames back.
+A macOS guest's MacBook Pro frame is drawn in CSS, so both entries show it unless `showFrame` is false.
 
 `onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
 `terminated` so a host can show status text without tracking the retry logic.
