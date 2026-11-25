@@ -204,7 +204,7 @@ iOS client for explicit display automation.
 
 ### Duo appearance
 
-The default entry bundles a Star White Duo appearance, about 1 MB, in a chunk of its own. A browser
+The default entry bundles a Star White Duo appearance, about 1.4 MB, in a chunk of its own. A browser
 downloads it only when a viewer picks 3D, so the 2D stream never waits for it. The lite entry has
 no appearance and draws the built-in body. Live simulator screens, hinge control and input work
 either way, and a failed load keeps the built-in body and reports the error.
