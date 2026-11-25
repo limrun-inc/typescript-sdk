@@ -50,7 +50,7 @@ export function macbookDimensions(aspect: number) {
 // and a closed one lies on the base, just short of touching the keys.
 export const MACBOOK_LID_OPEN = -0.16;
 export const MACBOOK_LID_CLOSED = Math.PI / 2 - 0.02;
-export const MACBOOK_LID_OPENING_MS = 1400;
+export const MACBOOK_LID_OPENING_MS = 2400;
 
 /**
  * The lid's angle as it opens, from 0 (closed) to 1 (open). It starts fast and slows to a stop,
