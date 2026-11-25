@@ -22,6 +22,16 @@ const { createDeviceStream, sendControl } = vi.hoisted(() => {
 });
 vi.mock('../core/device-stream', () => ({ createDeviceStream }));
 
+// The WebGL lid opening, which a test finishes or fails; jsdom has no WebGL to draw it.
+const lidRenderer = vi.hoisted(() => ({ fail: false, finish: undefined as (() => void) | undefined }));
+vi.mock('./macbook-lid-renderer', () => ({
+  renderLidOpening: (_canvas: HTMLCanvasElement, _opening: unknown, finished: () => void) => {
+    if (lidRenderer.fail) throw new Error('Lid animation WebGL unavailable');
+    lidRenderer.finish = finished;
+    return () => undefined;
+  },
+}));
+
 afterEach(() => {
   sendControl.mockClear();
   vi.unstubAllGlobals();
@@ -131,19 +141,94 @@ it('streams a macOS guest frameless without showFrame', async () => {
   }
 });
 
-it('opens the MacBook lid, with the screen on it, once the frame appears', async () => {
+it('opens the lid in WebGL over the hidden frame, then shows the frame', async () => {
   stubContainerSize(1114, 2000);
+  lidRenderer.fail = false;
   const { host, root, video } = await renderMacOS();
   try {
+    expect(host.querySelector('canvas.rc-macbook-opening')).not.toBeNull();
+    expect(host.querySelector('.rc-macbook')!.classList).toContain('rc-macbook-waiting');
+    expect(video.classList).toContain('rc-macbook-waiting');
+    await act(async () => lidRenderer.finish?.());
+    expect(host.querySelector('canvas.rc-macbook-opening')).toBeNull();
+    expect(host.querySelector('.rc-macbook')!.classList).not.toContain('rc-macbook-waiting');
+    expect(video.classList).not.toContain('rc-macbook-waiting');
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+it('opens the lid in CSS without WebGL', async () => {
+  stubContainerSize(1114, 2000);
+  lidRenderer.fail = true;
+  const { host, root, video } = await renderMacOS();
+  try {
+    expect(host.querySelector('canvas.rc-macbook-opening')).toBeNull();
     const lid = host.querySelector<HTMLElement>('.rc-macbook-lid')!;
     expect(lid.classList).toContain('rc-macbook-lid-opening');
     expect(video.classList).toContain('rc-video-lid-opening');
-    // The screen turns about the hinge, which needs the frame's unit beside the video too.
+    // The screen turns about the hinge, which needs the frame's unit beside the video too. The
+    // frame sits 22 pixels low, below the 2D and 3D switch.
     expect(video.style.getPropertyValue('--rc-macbook-unit')).toBe('10px');
-    expect(video.style.getPropertyValue('--rc-macbook-raise')).toBe('11px');
+    expect(video.style.getPropertyValue('--rc-macbook-raise')).toBe('-11px');
     await act(async () => lid.dispatchEvent(new Event('animationend', { bubbles: true })));
     expect(lid.classList).not.toContain('rc-macbook-lid-opening');
     expect(video.classList).not.toContain('rc-video-lid-opening');
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+it('keeps the lid open for a viewer who prefers reduced motion', async () => {
+  stubContainerSize(1114, 2000);
+  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce') }));
+  const { host, root, video } = await renderMacOS();
+  try {
+    expect(host.querySelector('canvas.rc-macbook-opening')).toBeNull();
+    expect(host.querySelector('.rc-macbook-lid')!.classList).not.toContain('rc-macbook-lid-opening');
+    expect(video.classList).not.toContain('rc-video-lid-opening');
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+it('switches the MacBook to 3D, handing the stream to it', async () => {
+  stubContainerSize(1114, 2000);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  const { host, root, video } = await renderMacOS({ animateLid: false });
+  try {
+    const switcher = host.querySelector('[aria-label="MacBook rendering"]')!;
+    const [flat, deep] = [...switcher.querySelectorAll('button')];
+    expect(flat!.getAttribute('aria-pressed')).toBe('true');
+    await act(async () => deep!.click());
+    expect(deep!.getAttribute('aria-pressed')).toBe('true');
+    // The 2D frame goes, and the video only feeds the 3D screen.
+    expect(host.querySelector('.rc-macbook')).toBeNull();
+    expect(video.style.opacity).toBe('0');
+    expect(video.style.pointerEvents).toBe('none');
+    // jsdom has no WebGL, so the 3D MacBook says so instead of drawing.
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('WebGL'));
+    await act(async () => flat!.click());
+    expect(host.querySelector('.rc-macbook')).not.toBeNull();
+    expect(video.style.opacity).toBe('');
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+it('streams a macOS guest without the switch when the frame is off', async () => {
+  stubContainerSize(1114, 2000);
+  const { host, root } = await renderMacOS({ showFrame: false });
+  try {
+    expect(host.querySelector('[aria-label="MacBook rendering"]')).toBeNull();
   } finally {
     await act(async () => root.unmount());
     host.remove();
