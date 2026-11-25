@@ -29,6 +29,7 @@ export async function sendCommand(
     let buffer = '';
     let resultData: unknown = undefined;
     let errorMsg: string | undefined;
+    let errorFields: { code?: string; written?: string } = {};
 
     socket.on('connect', () => {
       const req: DaemonRequest = { command, args };
@@ -59,11 +60,15 @@ export async function sendCommand(
             break;
           case 'stderr':
             errorMsg = String(resp.data);
+            errorFields = {
+              ...(resp.code !== undefined ? { code: resp.code } : {}),
+              ...(resp.written !== undefined ? { written: resp.written } : {}),
+            };
             break;
           case 'done':
             socket.end();
             if (resp.exitCode !== 0 && errorMsg) {
-              reject(new Error(errorMsg));
+              reject(Object.assign(new Error(errorMsg), errorFields));
             } else {
               resolve(resultData);
             }

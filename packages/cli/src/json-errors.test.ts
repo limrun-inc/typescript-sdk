@@ -3,6 +3,22 @@ import path from 'path';
 
 const { handleJsonError } = require('../bin/json-errors.cjs');
 
+test('JSON errors carry the instance error code and what was written', () => {
+  const handlerPath = path.resolve(__dirname, '../bin/json-errors.cjs');
+  const script = String.raw`
+    const error = Object.assign(new Error('No focused accessibility element found'), {
+      code: 'no_focused_element',
+      written: 'none',
+    });
+    require(${JSON.stringify(handlerPath)}).handleJsonError(error, ['--json']);
+  `;
+  const run = spawnSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 5000 });
+  expect(run.status).toBe(1);
+  expect(JSON.parse(run.stderr)).toEqual({
+    error: { code: 'no_focused_element', message: 'No focused accessibility element found', written: 'none' },
+  });
+});
+
 test('a forwarded --json is not a CLI flag', async () => {
   await expect(
     handleJsonError(new Error('failed'), ['ios', 'simctl', '--', 'listapps', '--json']),

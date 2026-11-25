@@ -181,10 +181,93 @@ export type ElementTreeNode = {
 
 export type ElementTree = ElementTreeNode[];
 
+/**
+ * Which reader answers an element tree request.
+ * - `accessibility` (default): the tree assistive technologies see. It leaves out elements the
+ *   software keyboard covers and has no container types for navigation bars or tab bars.
+ * - `xcuitest`: XCTest's own snapshot, the tree XCUITest queries. Navigation bars, tab bars, the
+ *   keyboard and alerts arrive as typed containers with their children. Full-tree reads only:
+ *   omit `point` and `visibleOnly`. Takes about a second per read.
+ */
+export type ElementTreeSource = 'accessibility' | 'xcuitest';
+
 export type ElementTreeOptions = {
   /** Skip branches whose nonempty frames fall outside the display. Full-tree reads only. Defaults to false. */
   visibleOnly?: boolean;
+  /** Which reader answers. Defaults to `accessibility`. */
+  source?: ElementTreeSource;
+  /**
+   * Wait up to this many milliseconds, at most 30000, for the screen to settle before answering:
+   * until two reads in a row match and the screen stops animating. A blinking text caret does not
+   * count as activity. {@link ElementTreeRead.idle} says whether it settled in time.
+   */
+  waitForIdleTimeoutMs?: number;
 };
+
+/** The software keyboard on screen. `frame` uses the element tree's coordinates. */
+export type KeyboardState = {
+  frame: ElementTreeFrame;
+};
+
+/**
+ * An alert covering the app. `system` is a system prompt, such as a permission request; `app` is the
+ * app's own alert or confirmation dialog. Sheets are not reported.
+ */
+export type ModalState = {
+  kind: 'system' | 'app';
+  label: string | null;
+};
+
+/** An element tree together with what the server reports about the screen around it. */
+export type ElementTreeRead = {
+  tree: ElementTree;
+  /**
+   * The software keyboard on full-tree reads from the `accessibility` source, or `null` when it is
+   * hidden. Absent on point reads, and on `xcuitest` reads, whose tree has XCTest's own Keyboard element.
+   */
+  keyboard?: KeyboardState | null;
+  /** The alert covering the app on `xcuitest` reads, or `null` when there is none. Absent on other reads. */
+  modal?: ModalState | null;
+  /** Whether the screen settled in time. Present only when `waitForIdleTimeoutMs` was set. */
+  idle?: boolean;
+};
+
+/** Where typed text would go. */
+export type FocusedElement = {
+  /** The element that reports focus, or `null` when none does. */
+  element: ElementTreeNode | null;
+  /**
+   * The software keyboard, or `null` when it is hidden. A keyboard with no element means the focused
+   * input is under the keyboard, which iOS leaves out of the tree: typeText still reaches it, and
+   * setElementValue fails with the `covered_by_keyboard` code.
+   */
+  keyboard: KeyboardState | null;
+};
+
+/**
+ * An iOS command the instance rejected. `message` is the server's error text; servers that predate
+ * error codes leave `code` and `written` undefined.
+ */
+export class CommandError extends Error {
+  /**
+   * The reason, stable to branch on: `no_focused_element`, `covered_by_keyboard`,
+   * `element_not_found`, `ambiguous_selector`, `ambiguous_focus`, `no_usable_frame`, `busy`,
+   * `invalid_request`, `unavailable`, `input_failed` or `internal`. New codes may appear.
+   */
+  readonly code: string | undefined;
+  /**
+   * Set by typeText, setElementValue and pressKey: `none` when nothing reached the app, so a retry
+   * cannot double the text, and `unknown` when input had started.
+   */
+  readonly written: 'none' | 'unknown' | undefined;
+
+  constructor(message: string, code?: string, written?: 'none' | 'unknown') {
+    super(message);
+    this.name = 'CommandError';
+    this.code = code;
+    this.written = written;
+  }
+}
 
 export type ElementTreeResultMessage = {
   type: 'elementTreeResult';
@@ -780,6 +863,10 @@ export type PerformActionResult = {
   elementLabel?: string;
   elementType?: string;
   error?: string;
+  /** Why the action failed; see {@link CommandError.code}. */
+  code?: string;
+  /** Whether a failed text action's input reached the app; see {@link CommandError.written}. */
+  written?: 'none' | 'unknown';
 };
 
 /**
@@ -832,6 +919,18 @@ export type InstanceClient = {
    * @returns A promise that resolves to the raw accessibility tree payload
    */
   elementTreeRaw: (point?: AccessibilityPoint, options?: ElementTreeOptions) => Promise<string>;
+
+  /**
+   * Get the element tree with what the server reports about the screen: the software keyboard,
+   * the alert covering the app, and whether the screen settled.
+   * @param point Optional point to get the element at that specific location
+   */
+  readElementTree: (point?: AccessibilityPoint, options?: ElementTreeOptions) => Promise<ElementTreeRead>;
+
+  /**
+   * Get the element typed text would go to, and the software keyboard.
+   */
+  focusedElement: () => Promise<FocusedElement>;
 
   /**
    * Tap at the specified coordinates on the active screen (uses native screen dimensions)
@@ -1739,6 +1838,12 @@ type ServerResponse = {
   type: string;
   id: string;
   error?: string;
+  code?: string;
+  written?: 'none' | 'unknown';
+  // elementTree and focusedElement fields
+  keyboard?: KeyboardState | null;
+  modal?: ModalState | null;
+  idle?: boolean;
   // Response-specific fields
   base64?: string;
   width?: number;
@@ -2280,6 +2385,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       };
     };
 
+    // A failed batch reports its error at the top level; the failing action's result carries the code.
+    const commandError = (message: ServerResponse): CommandError => {
+      const failedAction = message.results?.find((result) => result.error);
+      const source = failedAction ?? message;
+      return new CommandError(message.error!, source.code, source.written);
+    };
+
     // Generic request sender with timeout and response handling
     const sendRequest = <T>(
       type: string,
@@ -2534,7 +2646,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
         if (message.error) {
           logger.debug(`Server error for ${message.type}: ${message.error}`);
-          request.reject(new Error(message.error));
+          request.reject(commandError(message));
           return;
         }
 
@@ -2640,6 +2752,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
             screenshot,
             elementTree,
             elementTreeRaw,
+            readElementTree,
+            focusedElement,
             tap,
             tapWithScreenSize,
             tapElement,
@@ -2735,18 +2849,58 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<ScreenshotData>('screenshot', options);
     };
 
+    // An idle wait runs on the server before it answers, so the request waits for it too.
+    const elementTreeTimeoutMs = (options: ElementTreeOptions) =>
+      30_000 + (options.waitForIdleTimeoutMs ?? 0);
+
     const elementTree = (
       point?: AccessibilityPoint,
       options: ElementTreeOptions = {},
     ): Promise<ElementTree> => {
-      return sendRequest<ElementTree>('elementTree', { point, ...options });
+      return sendRequest<ElementTree>(
+        'elementTree',
+        { point, ...options },
+        undefined,
+        elementTreeTimeoutMs(options),
+      );
     };
 
     const elementTreeRaw = (
       point?: AccessibilityPoint,
       options: ElementTreeOptions = {},
     ): Promise<string> => {
-      return sendRequest<string>('elementTree', { point, ...options }, (msg) => msg.json ?? '');
+      return sendRequest<string>(
+        'elementTree',
+        { point, ...options },
+        (msg) => msg.json ?? '',
+        elementTreeTimeoutMs(options),
+      );
+    };
+
+    const readElementTree = (
+      point?: AccessibilityPoint,
+      options: ElementTreeOptions = {},
+    ): Promise<ElementTreeRead> => {
+      return sendRequest<ElementTreeRead>(
+        'elementTree',
+        { point, ...options },
+        (msg) => {
+          const read: ElementTreeRead = { tree: parseElementTree(msg.json ?? '[]') };
+          // Absent and null differ: null answers "none", absent means the read does not report it.
+          if (msg.keyboard !== undefined) read.keyboard = msg.keyboard;
+          if (msg.modal !== undefined) read.modal = msg.modal;
+          if (msg.idle !== undefined) read.idle = msg.idle;
+          return read;
+        },
+        elementTreeTimeoutMs(options),
+      );
+    };
+
+    const focusedElement = (): Promise<FocusedElement> => {
+      return sendRequest<FocusedElement>('focusedElement', {}, (msg) => ({
+        element: msg.json ? (JSON.parse(msg.json) as ElementTreeNode) : null,
+        keyboard: msg.keyboard ?? null,
+      }));
     };
 
     const tap = (x: number, y: number): Promise<void> => {
@@ -2784,11 +2938,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       );
     };
 
-    // The server fails absent selectors fast with a typed error whose phrase
-    // the e2e suite pins. The other two phrases are pre-fail-fast servers:
-    // their touch path reports a miss after its own sweep ("was not found on
-    // screen"), and their ax path reports "not found for selector".
+    // The server fails absent selectors fast with the element_not_found code. The phrases cover
+    // servers that predate codes: the first is the fail-fast phrase the e2e suite pins, and the
+    // other two are pre-fail-fast servers, whose touch path reports a miss after its own sweep
+    // ("was not found on screen") and whose ax path reports "not found for selector".
     const isAbsentSelectorError = (error: unknown): boolean => {
+      if (error instanceof CommandError && error.code === 'element_not_found') return true;
       const message = error instanceof Error ? error.message : String(error);
       return /matched nothing in the accessibility tree|was not found on screen after scrolling|Accessibility element not found for selector/.test(
         message,

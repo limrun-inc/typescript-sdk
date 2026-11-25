@@ -4,6 +4,9 @@ const sentMessages: Record<string, unknown>[] = [];
 let tapElementMissesRemaining = 0;
 let deviceModel = 'iphone';
 let panelActivity: Array<boolean | undefined> = [false, true];
+// Replies the server gives to the element tree, focus and failing-command tests.
+let typeTextFailure: Record<string, unknown> | undefined;
+const keyboardFrame = { x: 0, y: 546, width: 402, height: 328 };
 
 jest.mock('ws', () => {
   const { EventEmitter } = require('events');
@@ -94,7 +97,62 @@ jest.mock('ws', () => {
         });
       } else if (message['type'] === 'typeText') {
         process.nextTick(() => {
-          this['emit']('message', Buffer.from(JSON.stringify({ type: 'typeTextResult', id: message.id })));
+          this['emit'](
+            'message',
+            Buffer.from(JSON.stringify({ type: 'typeTextResult', id: message.id, ...typeTextFailure })),
+          );
+        });
+      } else if (message['type'] === 'elementTree') {
+        const xcuitest = message.source === 'xcuitest';
+        process.nextTick(() => {
+          this['emit'](
+            'message',
+            Buffer.from(
+              JSON.stringify({
+                type: 'elementTreeResult',
+                id: message.id,
+                json: JSON.stringify([{ type: 'Application', AXLabel: 'Probe' }]),
+                ...(xcuitest ? { modal: { kind: 'app', label: 'Delete note?' } } : { keyboard: null }),
+                ...(message.waitForIdleTimeoutMs ? { idle: true } : {}),
+              }),
+            ),
+          );
+        });
+      } else if (message['type'] === 'focusedElement') {
+        process.nextTick(() => {
+          this['emit'](
+            'message',
+            Buffer.from(
+              JSON.stringify({
+                type: 'focusedElementResult',
+                id: message.id,
+                json: null,
+                keyboard: { frame: keyboardFrame },
+              }),
+            ),
+          );
+        });
+      } else if (message['type'] === 'performActions') {
+        process.nextTick(() => {
+          this['emit'](
+            'message',
+            Buffer.from(
+              JSON.stringify({
+                type: 'performActionsResult',
+                id: message.id,
+                error: 'No focused accessibility element found',
+                results: [
+                  { type: 'tap' },
+                  {
+                    type: 'typeText',
+                    error: 'No focused accessibility element found',
+                    code: 'no_focused_element',
+                    written: 'none',
+                  },
+                ],
+              }),
+            ),
+          );
         });
       } else if (message['type'] === 'tapElement') {
         const miss = tapElementMissesRemaining > 0;
@@ -157,6 +215,7 @@ describe('iOS input serialization', () => {
     tapElementMissesRemaining = 0;
     deviceModel = 'iphone';
     panelActivity = [false, true];
+    typeTextFailure = undefined;
   });
 
   it('scroll-searches the active inner display using its upright height', async () => {
@@ -324,6 +383,85 @@ describe('iOS input serialization', () => {
       direction: 'down',
       pixels: 300,
       coordinate: [120, 500],
+    });
+
+    client.disconnect();
+  });
+  it('reads the tree with the keyboard, alert and idle state the server reports', async () => {
+    const client = await connect();
+
+    const accessibility = await client.readElementTree(undefined, { waitForIdleTimeoutMs: 2000 });
+    expect(sentMessages.find((message) => message['type'] === 'elementTree')).toMatchObject({
+      waitForIdleTimeoutMs: 2000,
+    });
+    expect(accessibility).toEqual({
+      tree: [{ type: 'Application', AXLabel: 'Probe' }],
+      keyboard: null,
+      idle: true,
+    });
+    expect(accessibility).not.toHaveProperty('modal');
+
+    const xcuitest = await client.readElementTree(undefined, { source: 'xcuitest' });
+    expect(sentMessages.filter((message) => message['type'] === 'elementTree')[1]).toMatchObject({
+      source: 'xcuitest',
+    });
+    expect(xcuitest.modal).toEqual({ kind: 'app', label: 'Delete note?' });
+    expect(xcuitest).not.toHaveProperty('keyboard');
+    expect(xcuitest).not.toHaveProperty('idle');
+
+    expect(await client.elementTree(undefined, { source: 'xcuitest' })).toEqual([
+      { type: 'Application', AXLabel: 'Probe' },
+    ]);
+
+    client.disconnect();
+  });
+
+  it('reports a focused input under the keyboard as a keyboard with no element', async () => {
+    const client = await connect();
+
+    expect(await client.focusedElement()).toEqual({ element: null, keyboard: { frame: keyboardFrame } });
+
+    client.disconnect();
+  });
+
+  it('rejects failed commands with the code and what was written', async () => {
+    const { CommandError } = await import('../src/ios-client');
+    const client = await connect();
+    typeTextFailure = {
+      error: 'No focused accessibility element found',
+      code: 'no_focused_element',
+      written: 'none',
+    };
+
+    const failure = await client.typeText('hello').catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(CommandError);
+    expect(failure).toMatchObject({
+      message: 'No focused accessibility element found',
+      code: 'no_focused_element',
+      written: 'none',
+    });
+
+    typeTextFailure = { error: 'An older server' };
+    const legacy = await client.typeText('hello').catch((error: unknown) => error);
+    expect(legacy).toBeInstanceOf(CommandError);
+    expect(legacy).toMatchObject({ message: 'An older server', code: undefined, written: undefined });
+
+    client.disconnect();
+  });
+
+  it('takes a failed batch code from the action that failed', async () => {
+    const client = await connect();
+
+    const failure = await client
+      .performActions([
+        { type: 'tap', x: 1, y: 2 },
+        { type: 'typeText', text: 'hello' },
+      ])
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      message: 'No focused accessibility element found',
+      code: 'no_focused_element',
+      written: 'none',
     });
 
     client.disconnect();

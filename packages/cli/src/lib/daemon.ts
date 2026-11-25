@@ -291,6 +291,10 @@ export interface DaemonResponse {
   type: 'stdout' | 'stderr' | 'result' | 'done';
   data?: unknown;
   exitCode?: number;
+  /** On stderr: the failed command's error code, when the instance reported one. */
+  code?: string;
+  /** On stderr: whether a failed text command's input reached the app. */
+  written?: string;
 }
 
 // ---------- Daemon server ----------
@@ -522,6 +526,17 @@ export function startDaemonServer(): void {
           }
           break;
 
+        // The tree with the keyboard, alert and idle state; element-tree keeps its bare array.
+        case 'read-element-tree':
+          if (type !== 'ios') throw new Error('read-element-tree is only supported on iOS instances');
+          result = await (client as any).readElementTree(undefined, args[0]);
+          break;
+
+        case 'focused-element':
+          if (type !== 'ios') throw new Error('focused-element is only supported on iOS instances');
+          result = await (client as any).focusedElement();
+          break;
+
         case 'device-info':
           if (type !== 'ios') throw new Error('info is only supported on iOS instances');
           result = await (client as any).getDeviceInfo();
@@ -590,7 +605,13 @@ export function startDaemonServer(): void {
       send(socket, { type: 'result', data: result });
       send(socket, { type: 'done', exitCode: 0 });
     } catch (err: any) {
-      send(socket, { type: 'stderr', data: err.message || String(err) });
+      // The instance's error code and written fact survive the hop, so --json errors carry them.
+      send(socket, {
+        type: 'stderr',
+        data: err.message || String(err),
+        ...(typeof err?.code === 'string' ? { code: err.code } : {}),
+        ...(typeof err?.written === 'string' ? { written: err.written } : {}),
+      });
       send(socket, { type: 'done', exitCode: 1 });
     }
   }

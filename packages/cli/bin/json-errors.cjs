@@ -15,6 +15,7 @@ async function handleJsonError(error, argv = process.argv.slice(2)) {
           code: typeof error?.code === 'string' ? error.code : 'CLI_ERROR',
           message: error instanceof Error ? error.message : String(error),
           ...(typeof error?.status === 'number' ? { status: error.status } : {}),
+          ...(typeof error?.written === 'string' ? { written: error.written } : {}),
         },
       }) + '\n',
     );

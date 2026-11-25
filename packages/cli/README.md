@@ -317,6 +317,7 @@ lim ios set-text "user@example.com" --ax-unique-id email_field
 lim ios press-key enter
 lim ios press-key "@"
 lim ios toggle-keyboard
+lim ios focused-element                   # a keyboard with no element: the input is under the keyboard
 
 # Scrolling and swiping
 lim ios scroll down --amount 500
@@ -354,6 +355,9 @@ lim ios restart-services com.apple.SpringBoard com.apple.locationd com.apple.tcc
 # UI inspection
 lim ios element-tree
 lim ios element-tree | jq '.'
+lim ios element-tree --source xcuitest            # bars, tab bars, keyboard and alerts as containers
+lim ios element-tree --wait-for-idle-timeout-ms 3000   # wait for the screen to settle first
+lim ios focused-element                           # where typed text goes
 
 # Open URLs / deep links
 lim ios open-url https://example.com
