@@ -232,8 +232,16 @@ it('leaves presses on the 3D controls to the browser', async () => {
   }
 });
 
-it('puts the stream in the screen opening of a rendered MacBook image', async () => {
-  // A 2000 × 1600 image whose opening spans the middle half of its width and the top half of its height.
+// A 2000 × 1600 image whose opening spans the middle half of its width and from a tenth to six
+// tenths of its height. The image fits the 800 pixels below the switch at 1000 × 800, so the
+// opening is 500 × 400 from (250, 80).
+async function renderMacbookImage(screen: {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  notch?: number;
+}) {
   stubContainerSize(1000, 844);
   vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(2000);
   vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(1600);
@@ -248,29 +256,66 @@ it('puts the stream in the screen opening of a rendered MacBook image', async ()
   const host = document.createElement('div');
   document.body.append(host);
   const root = createRoot(host);
-  const assets = {
-    macos: { frame: 'data:image/webp;base64,', screen: { left: 0.25, top: 0.1, width: 0.5, height: 0.5 } },
-  };
+  const assets = { macos: { frame: 'data:image/webp;base64,', screen } };
   await act(async () =>
     root.render(
       <RemoteControl url="wss://example.com/v1/macos_eu_test/endpointWebSocket" token="t" assets={assets} />,
     ),
   );
+  const image = host.querySelector<HTMLImageElement>('img.rc-macbook-image')!;
+  await act(async () => image.dispatchEvent(new Event('load')));
+  return { host, root, image, video: host.querySelector('video')! };
+}
+
+// Pixel offsets from the container's center in a translate(calc(-50% + x), calc(-50% + y)).
+const offsets = (transform: string) => [...transform.matchAll(/([-\d.]+)px/g)].map((m) => Number(m[1]));
+
+it('puts the stream in the screen opening of a rendered MacBook image', async () => {
+  const { host, root, image, video } = await renderMacbookImage({
+    left: 0.25,
+    top: 0.1,
+    width: 0.5,
+    height: 0.5,
+  });
   try {
-    const image = host.querySelector<HTMLImageElement>('img.rc-macbook-image')!;
-    await act(async () => image.dispatchEvent(new Event('load')));
-    const video = host.querySelector('video')!;
-    // The image fits the 800 pixels below the switch: 1000 × 800.
     expect(image.style.width).toBe('1000px');
     expect(image.style.height).toBe('800px');
     expect(image.style.transform).toBe('translateY(22px)');
     expect(host.querySelector('.rc-macbook')).toBeNull();
-    // The opening is 500 × 400, its center 0 across and 400 × (0.35 - 0.5) + 22 down from the middle.
+    // The 16:10 stream keeps its shape, 500 × 312.5, centered in the opening: its center is 280
+    // down the frame, 120 above the frame's, and 22 below the switch.
     expect(video.style.width).toBe('500px');
-    expect(video.style.height).toBe('400px');
-    const [dx, dy] = [...video.style.transform.matchAll(/([-\d.]+)px/g)].map((m) => Number(m[1]));
+    expect(video.style.height).toBe('312.5px');
+    const [dx, dy] = offsets(video.style.transform);
     expect(dx).toBeCloseTo(0, 6);
     expect(dy).toBeCloseTo(-98, 6);
+    expect(host.querySelector('canvas.rc-macbook-band')).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+it('puts the stream right under the notch and fills the strip beside it', async () => {
+  const { host, root, video } = await renderMacbookImage({
+    left: 0.25,
+    top: 0.1,
+    width: 0.5,
+    height: 0.5,
+    notch: 0.1,
+  });
+  try {
+    // The notch takes the opening's top 40 pixels, so the stream starts at 120 down the frame.
+    expect(video.style.height).toBe('312.5px');
+    const [, dy] = offsets(video.style.transform);
+    expect(dy).toBeCloseTo(120 + 156.25 - 400 + 22, 6);
+    // The strip runs from the opening's top to the stream's, a pixel into it.
+    const band = host.querySelector<HTMLCanvasElement>('canvas.rc-macbook-band')!;
+    expect(band.style.width).toBe('500px');
+    expect(band.style.height).toBe('41px');
+    const [, bandY] = offsets(band.style.transform);
+    expect(bandY).toBeCloseTo(80 + 20.5 - 400 + 22, 6);
   } finally {
     await act(async () => root.unmount());
     host.remove();

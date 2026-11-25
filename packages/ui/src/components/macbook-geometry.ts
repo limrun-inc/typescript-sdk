@@ -266,7 +266,8 @@ export function macbookMeshes(aspect: number): MacbookMesh[] {
  * How a stream fills a display of another shape: the texture transform that keeps its shape,
  * centered, with black bars on the sides it does not reach. Texture coordinates outside 0 to 1
  * after it are the bars. A display with a notch keeps the stream below it, in the band macOS keeps
- * clear of the notch; `notch` is the share of the display's height the notch takes at its top.
+ * clear of the notch, right under it, so the strip beside the notch can show the stream's menu bar
+ * reaching up; `notch` is the share of the display's height the notch takes at its top.
  */
 export function streamFit(videoAspect: number, screenAspect: number, notch = 0) {
   const area = 1 - notch;
@@ -274,7 +275,7 @@ export function streamFit(videoAspect: number, screenAspect: number, notch = 0) 
   const width = videoAspect >= areaAspect ? 1 : videoAspect / areaAspect;
   const height = (videoAspect >= areaAspect ? areaAspect / videoAspect : 1) * area;
   const left = (1 - width) / 2;
-  const bottom = (area - height) / 2;
+  const bottom = notch > 0 ? area - height : (area - height) / 2;
   return { repeat: [1 / width, 1 / height], offset: [(0 - left) / width, (0 - bottom) / height] } as const;
 }
 

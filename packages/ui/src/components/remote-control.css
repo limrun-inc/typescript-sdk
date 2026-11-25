@@ -147,6 +147,16 @@
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.28));
 }
 
+/* The strip either side of the MacBook's notch, filled from the stream's top row. */
+.rc-macbook-band {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 25;
+  background: #000;
+  pointer-events: none;
+}
+
 /* The MacBook's 2D and 3D switch stays above the frame it sits over. */
 .rc-container > .rc-duo-mode {
   z-index: 45;

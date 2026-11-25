@@ -356,9 +356,11 @@ export type RemoteControlPlatformAssets = {
   modelFrames?: Partial<Record<FramedIOSModel, { frame: string; frameLandscape: string }>>;
   /**
    * Where a macOS frame image's screen opening sits, as fractions of the image's width and height
-   * from its top left. A macOS `frame` needs it; without both, the MacBook is drawn in CSS.
+   * from its top left. A macOS `frame` needs it; without both, the MacBook is drawn in CSS. `notch`
+   * is the share of the opening's height a notch takes at its top: the stream sits below it, and
+   * the strip either side of the notch shows the stream's top row, as if its menu bar reached up.
    */
-  screen?: { left: number; top: number; width: number; height: number };
+  screen?: { left: number; top: number; width: number; height: number; notch?: number };
   loadingLogo?: string;
 };
 
@@ -555,6 +557,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const [homeButtonStyle, setHomeButtonStyle] = useState<React.CSSProperties | null>(null);
     const [macbookStyle, setMacbookStyle] = useState<React.CSSProperties | null>(null);
+    // The strip either side of the 2D MacBook's notch, above the stream.
+    const [macbookBandStyle, setMacbookBandStyle] = useState<React.CSSProperties | null>(null);
+    const macbookBandRef = useRef<HTMLCanvasElement>(null);
     // The stream's aspect ratio, which the 3D MacBook's built-in model takes for its screen.
     const [macbookAspect, setMacbookAspect] = useState<number | null>(null);
     const [macbookMode, setMacbookMode] = useState<'2d' | '3d'>('2d');
@@ -683,6 +688,40 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const macbookImageRef = useRef<HTMLImageElement>(null);
     const macbook3d = macbookVisible && macbookMode === '3d';
     macbook3dRef.current = macbook3d;
+
+    // The strip beside the 2D MacBook's notch shows the stream's top row, the guest's menu bar,
+    // copied in with each new frame of the stream.
+    const macbookBandVisible = !!macbookImage && !macbook3d && !!macbookBandStyle;
+    useEffect(() => {
+      const video = videoRef.current;
+      const band = macbookBandRef.current;
+      const context = band?.getContext('2d');
+      if (!macbookBandVisible || !video || !band || !context) return;
+      const draw = () => {
+        if (!video.videoWidth) return;
+        if (band.width !== video.videoWidth) band.width = video.videoWidth;
+        try {
+          context.drawImage(video, 0, 0, video.videoWidth, 1, 0, 0, band.width, 1);
+        } catch {
+          // A frame the browser cannot read yet leaves the strip as it was.
+        }
+      };
+      let stopped = false;
+      let callback: number | undefined;
+      const frame = () => {
+        if (stopped) return;
+        draw();
+        callback = video.requestVideoFrameCallback(frame);
+      };
+      const timer = 'requestVideoFrameCallback' in video ? undefined : window.setInterval(draw, 1000 / 30);
+      if (timer === undefined) callback = video.requestVideoFrameCallback(frame);
+      draw();
+      return () => {
+        stopped = true;
+        if (callback !== undefined) video.cancelVideoFrameCallback(callback);
+        window.clearInterval(timer);
+      };
+    }, [macbookBandVisible]);
 
     const clientRef = useRef<DeviceStream | null>(null);
     const sendBinaryControlMessage = (data: ArrayBuffer) => clientRef.current?.sendControl(data);
@@ -2091,12 +2130,42 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           const frameHeight = frameWidth / imageAspect;
           const shift = container.clientHeight > 0 ? MACBOOK_TOOLBAR_SPACE / 2 : 0;
           const { screen } = macbookImage;
-          const dx = (screen.left + screen.width / 2 - 0.5) * frameWidth;
-          const dy = (screen.top + screen.height / 2 - 0.5) * frameHeight + shift;
+          const notch = screen.notch ?? 0;
+          // The opening, and the area below its notch, in pixels from the frame's top left.
+          const openingLeft = screen.left * frameWidth;
+          const openingTop = screen.top * frameHeight;
+          const openingWidth = screen.width * frameWidth;
+          const areaTop = openingTop + notch * screen.height * frameHeight;
+          const areaHeight = (1 - notch) * screen.height * frameHeight;
+          // The stream keeps its shape in the area: right under the notch, so the strip beside the
+          // notch meets its menu bar, or centered on a screen without one.
+          const streamAspect = size ? size.width / size.height : MACBOOK_PLACEHOLDER_ASPECT;
+          const streamWidth = Math.min(openingWidth, areaHeight * streamAspect);
+          const streamHeight = streamWidth / streamAspect;
+          const streamLeft = openingLeft + (openingWidth - streamWidth) / 2;
+          const streamTop = notch > 0 ? areaTop : areaTop + (areaHeight - streamHeight) / 2;
+          // Offsets from the container's center, which the frame sits on, shifted below the switch.
+          const offset = (left: number, top: number, width: number, height: number) =>
+            `translate(calc(-50% + ${left + width / 2 - frameWidth / 2}px), calc(-50% + ${
+              top + height / 2 - frameHeight / 2 + shift
+            }px))`;
           updateVideoStyle({
-            width: `${screen.width * frameWidth}px`,
-            height: `${screen.height * frameHeight}px`,
-            transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`,
+            width: `${streamWidth}px`,
+            height: `${streamHeight}px`,
+            transform: offset(streamLeft, streamTop, streamWidth, streamHeight),
+          });
+          const bandHeight = streamTop - openingTop;
+          setMacbookBandStyle((current) => {
+            const next =
+              notch > 0 && bandHeight > 0 ?
+                {
+                  width: `${streamWidth}px`,
+                  // A pixel under the stream's edge, so no seam shows between them.
+                  height: `${bandHeight + 1}px`,
+                  transform: offset(streamLeft, openingTop, streamWidth, bandHeight + 1),
+                }
+              : null;
+            return current && next && sameStyle(current, next) ? current : next;
           });
           updateMacbookStyle({
             width: `${frameWidth}px`,
@@ -2381,6 +2450,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             className={platform === 'ios' ? 'rc-phone-frame rc-phone-frame-ios' : 'rc-phone-frame'}
             draggable={false}
           />
+        )}
+        {macbookImage && !macbook3d && macbookBandStyle && (
+          <canvas ref={macbookBandRef} className="rc-macbook-band" style={macbookBandStyle} height={1} />
         )}
         {macbookImage && !macbook3d && (
           <img

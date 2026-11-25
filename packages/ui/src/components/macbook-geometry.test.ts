@@ -119,6 +119,14 @@ describe('a stream on a display of another shape', () => {
     expect(bottomRight.y).toBeCloseTo(1, 5);
   });
 
+  it('puts a wider stream right under the notch, its bar at the bottom', () => {
+    const share = 74 / 2234;
+    const wide = streamFit(16 / 9, 3456 / 2234, share);
+    const topLeft = streamPoint(0, 1 - share, wide)!;
+    expect(topLeft.y).toBeCloseTo(0, 5);
+    expect(streamPoint(0.5, 0.01, wide)).toBeUndefined();
+  });
+
   it('puts bars on the sides of a narrower stream', () => {
     const narrow = streamFit(4 / 3, 1.545);
     expect(streamPoint(0.01, 0.5, narrow)).toBeUndefined();
