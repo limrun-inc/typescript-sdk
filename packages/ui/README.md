@@ -161,7 +161,7 @@ This package is not part of generated SDK, hence you need to publish it manually
 `RemoteControl` discovers native Duo support and starts in 2D with native video
 inside a silver Duo frame, including its hinge spine and physical buttons.
 Both modes share the fold, hinge-angle and rotation toolbar. No model prop is required. Select **3D**
-to load the interactive frame and its model on demand. Returning to **2D** releases
+to load the interactive frame and its bundled model on demand. Returning to **2D** releases
 the renderer and its graphics resources without reconnecting the simulator.
 
 ```tsx
@@ -202,14 +202,20 @@ accessibility inspection and the existing recording API do not follow the
 inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript
 iOS client for explicit display automation.
 
-### Optional Duo appearance
+### Duo appearance
 
-`duoModelUrl` replaces the rigid body with a host-supplied GLB. The host provides
-and licenses the asset; no third-party model is bundled with this package.
-Live simulator screens, hinge control and input remain active. A failed load keeps
-the built-in frame available and reports the error.
+The default entry bundles a Star White Duo appearance, about 1 MB, in a chunk of its own. A browser
+downloads it only when a viewer picks 3D, so the 2D stream never waits for it. The lite entry has
+no appearance and draws the built-in body. Live simulator screens, hinge control and input work
+either way, and a failed load keeps the built-in body and reports the error.
 
-The prepared model must contain `folding-half` and `stationary-half` groups with
+The original model and textures are by Apple, and Apple and the respective owners retain their
+rights. The conversion and folding geometry come from
+[jal-co/iphone-duo](https://github.com/jal-co/iphone-duo/blob/3674f3343d20a72fd6c7277bdd5cfeffc9216f7d/THIRD_PARTY.md)
+at commit `3674f33`, whose MIT code license does not cover the asset. Limrun optimized the
+geometry, removed embedded textures, adjusted materials and added screen and button metadata.
+
+`duoModelUrl` replaces the bundled appearance with a GLB you serve. The prepared model must contain `folding-half` and `stationary-half` groups with
 flat mesh children measured in centimeters. Inner display surfaces lie in the
 XY plane, centered at the hinge with positive Z facing the inner display.
 Material names `inner-screen` and `cover-screen` identify surfaces replaced by live

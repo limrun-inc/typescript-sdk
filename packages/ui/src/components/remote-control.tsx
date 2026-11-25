@@ -101,7 +101,10 @@ export interface RemoteControlProps {
    */
   deviceModel?: RemoteControlDeviceModel;
 
-  /** Optional prepared Duo GLB, supplied and licensed by the host application. */
+  /**
+   * A prepared iPhone Duo GLB for the 3D Duo, in place of the one the default entry bundles.
+   * Without either, as with the lite entry, a simpler built-in Duo is drawn.
+   */
   duoModelUrl?: string;
 
   /**
@@ -363,8 +366,9 @@ export type RemoteControlPlatformAssets = {
    */
   screen?: { left: number; top: number; width: number; height: number; notch?: number };
   /**
-   * The prepared GLB a macOS guest's 3D MacBook draws; scripts/prepare-macbook-model.mjs describes
-   * the nodes it must have. The default entry's loads only when a viewer picks 3D.
+   * The prepared GLB the platform's 3D device draws: the iPhone Duo for iOS, and the MacBook for
+   * macOS, whose nodes scripts/prepare-macbook-model.mjs describes. The default entry's load only
+   * when the 3D view appears.
    */
   model?: RemoteControlModel;
   loadingLogo?: string;
@@ -2695,7 +2699,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             <DuoView
               watchOnly={watchOnly}
               showFrame={showFrame}
-              modelUrl={duoModelUrl}
+              model={duoModelUrl ?? platformAssets?.model}
               outer={videoRef.current}
               inner={innerVideoRef.current}
               state={duoState}

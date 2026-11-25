@@ -37,12 +37,13 @@ describeDist('@limrun/ui/lite bundle', () => {
     return [...seen].map((file) => readFileSync(join(dist, file), 'utf8'));
   };
 
-  test('the default entry loads the MacBook model only through a dynamic import', () => {
+  test('the default entry loads its 3D models only through dynamic imports', () => {
     expect(chunksOf('index.js').some((code) => code.includes('data:model/gltf-binary'))).toBe(false);
-    expect(reachable('index.js').some((code) => code.includes('data:model/gltf-binary'))).toBe(true);
+    // The iPhone Duo's and the MacBook's.
+    expect(reachable('index.js').filter((code) => code.includes('data:model/gltf-binary'))).toHaveLength(2);
   });
 
-  test('lite entry reaches no bundled model', () => {
+  test('lite entry reaches no bundled models', () => {
     for (const code of reachable('lite.js')) expect(code).not.toContain('data:model/gltf-binary');
   });
 

@@ -27,6 +27,7 @@ export const defaultRemoteControlAssets: RemoteControlAssets = {
       'iphone-17e': { frame: iphone17eFrame, frameLandscape: iphone17eFrameLandscape },
     },
     loadingLogo: appleLogo,
+    model: () => import('./duo-model').then((module) => module.default),
   },
   android: {
     frame: pixelFrame,

@@ -13,6 +13,7 @@ import {
   type MacbookKind,
 } from './macbook-geometry';
 import { createStudioEnvironment } from './studio-environment';
+import { loadModel as loadGltf } from './model-source';
 import type { RemoteControlModel } from './remote-control';
 
 export interface MacbookFrameProps {
@@ -77,18 +78,6 @@ function material(kind: MacbookKind, screen: THREE.Material): THREE.Material {
     case 'scoop':
       return new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.6, roughness: 0.5, side });
   }
-}
-
-// The bytes of a base64 data URL.
-function dataUrlBytes(url: string): ArrayBuffer {
-  const comma = url.indexOf(',');
-  const header = url.slice(0, comma);
-  const body = url.slice(comma + 1);
-  if (!header.endsWith(';base64')) return new TextEncoder().encode(decodeURIComponent(body)).buffer;
-  const binary = atob(body);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes.buffer;
 }
 
 // Layers drawn on another surface win its depth test however far the camera is.
@@ -285,18 +274,11 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     // A prepared model replaces the built-in one once it loads; until then, or if it fails, the
     // built-in one stays.
     const loadModel = async (source: RemoteControlModel) => {
-      const [{ GLTFLoader }, { MeshoptDecoder }, url] = await Promise.all([
+      const [{ GLTFLoader }, { MeshoptDecoder }] = await Promise.all([
         import('three/addons/loaders/GLTFLoader.js'),
         import('three/addons/libs/meshopt_decoder.module.js'),
-        typeof source === 'string' ? source : source(),
       ]);
-      const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-      // A bundled model arrives as a data URL. Decoding it here, rather than fetching it, keeps a
-      // page whose content security policy limits connect-src working.
-      const { scene: imported } =
-        url.startsWith('data:') ?
-          await loader.parseAsync(dataUrlBytes(url), '')
-        : await loader.loadAsync(url);
+      const { scene: imported } = await loadGltf(new GLTFLoader().setMeshoptDecoder(MeshoptDecoder), source);
       const loaded: { dispose(): void }[] = [];
       imported.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;

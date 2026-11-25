@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
+import type { RemoteControlModel } from './remote-control';
 import { createStudioEnvironment } from './studio-environment';
 import { duoFoldAngle } from './duo-fold-timing';
 import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
@@ -18,7 +19,8 @@ import {
 
 export interface DuoFrameProps {
   watchOnly?: boolean;
-  modelUrl?: string;
+  /** The prepared Duo appearance to draw over the built-in body. */
+  model?: RemoteControlModel;
   outer: HTMLVideoElement | null;
   inner: HTMLVideoElement | null;
   state: DuoState;
@@ -100,9 +102,9 @@ export default function DuoFrame(props: DuoFrameProps) {
 
     const model = createDuoModel(outerTexture, innerTexture, environmentMap.texture);
     const { device } = model;
-    if (props.modelUrl)
+    if (props.model)
       void model
-        .loadAppearance(props.modelUrl)
+        .loadAppearance(props.model)
         .then(() => invalidate())
         .catch((reason) => setError(String(reason)));
     const buttons = new DuoButtonSender(
@@ -452,7 +454,7 @@ export default function DuoFrame(props: DuoFrameProps) {
       environmentMap.dispose();
       renderer.domElement.remove();
     };
-  }, [props.outer, props.inner, props.modelUrl]);
+  }, [props.outer, props.inner, props.model]);
 
   return (
     <div className="rc-duo">
