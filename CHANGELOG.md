@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.77.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.77.2...v0.77.3) (2026-11-24)
+
+
+### Features
+
+* macOS guest client and disk snapshots ([#725](https://github.com/limrun-inc/typescript-sdk/issues/725)) ([2a5dff6](https://github.com/limrun-inc/typescript-sdk/commit/2a5dff6134e596548f6502b957dec51fd0c67042))
+
 ## [0.77.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.77.1...v0.77.2) (2026-11-24)
 
 
