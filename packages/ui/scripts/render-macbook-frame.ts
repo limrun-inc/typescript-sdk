@@ -5,19 +5,22 @@
 // &save=<url> it also POSTs the PNG there. Convert the PNG to WebP:
 //   cwebp -q 90 -alpha_q 100 macbook_pro_frame.png -o src/assets/macbook_pro_frame.webp
 //
-// The camera looks square at the screen, so the screen's opening is a rectangle the stream fills.
-// The lid leans back, so the same camera looks down onto the keyboard. The opening is where the
-// screen shows, the notch kept in front of it.
+// A perspective camera looks square at the screen's center, so the screen's opening is a rectangle
+// the stream fills, while the rest of the MacBook keeps its perspective, as in a photograph. The
+// lid leans back, so the same camera looks down onto the keyboard. The opening is where the screen
+// shows, the notch kept in front of it.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { lidRotation } from '../src/components/macbook-geometry';
 import { createStudioEnvironment } from '../src/components/studio-environment';
 
-// How far the lid opens, in degrees from closed, and the frame's pixels per hundredth of the
-// screen's width.
-const LID_DEGREES = 104;
-const PIXELS_PER_UNIT = 20;
+// How far the lid opens, in degrees from closed; the camera's distance from the screen, in
+// hundredths of its width, about where a person sits from a laptop (nearer exaggerates the
+// perspective); and the screen's width in the frame, in pixels.
+const LID_DEGREES = 100;
+const DISTANCE = 300;
+const SCREEN_PIXELS = 2000;
 
 const params = new URLSearchParams(location.search);
 const modelUrl = params.get('model');
@@ -39,13 +42,14 @@ const facing = new THREE.Vector3(0, 0, 1).applyQuaternion(turn);
 const up = new THREE.Vector3(0, 1, 0).applyQuaternion(turn);
 const screenBox = new THREE.Box3().setFromObject(screen);
 const target = screenBox.getCenter(new THREE.Vector3());
-const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2000);
-camera.position.copy(target).addScaledVector(facing, 600);
+const camera = new THREE.PerspectiveCamera(60, 1, 1, 4000);
+camera.position.copy(target).addScaledVector(facing, DISTANCE);
 camera.up.copy(up);
 camera.lookAt(target);
 camera.updateMatrixWorld(true);
+camera.updateProjectionMatrix();
 
-// Bounds of a set of meshes in the camera's view, from every vertex.
+// Bounds of a set of meshes on the camera's image, in normalized device coordinates.
 const viewBounds = (root: THREE.Object3D) => {
   const box = new THREE.Box2(new THREE.Vector2(Infinity, Infinity), new THREE.Vector2(-Infinity, -Infinity));
   const point = new THREE.Vector3();
@@ -53,26 +57,28 @@ const viewBounds = (root: THREE.Object3D) => {
     if (!(object instanceof THREE.Mesh)) return;
     const position = object.geometry.getAttribute('position');
     for (let i = 0; i < position.count; i++) {
-      point
-        .fromBufferAttribute(position, i)
-        .applyMatrix4(object.matrixWorld)
-        .applyMatrix4(camera.matrixWorldInverse);
+      point.fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld).project(camera);
       box.expandByPoint(new THREE.Vector2(point.x, point.y));
     }
   });
   return box;
 };
 const frame = viewBounds(model);
-const margin = 1;
-frame.min.subScalar(margin);
-frame.max.addScalar(margin);
-camera.left = frame.min.x;
-camera.right = frame.max.x;
-camera.bottom = frame.min.y;
-camera.top = frame.max.y;
-camera.updateProjectionMatrix();
-const width = Math.round((frame.max.x - frame.min.x) * PIXELS_PER_UNIT);
-const height = Math.round((frame.max.y - frame.min.y) * PIXELS_PER_UNIT);
+const opening = viewBounds(screen);
+// The camera renders only the MacBook's part of its image, at the scale that makes the screen
+// SCREEN_PIXELS wide, with a margin around it.
+const pixelsPerUnit = SCREEN_PIXELS / (opening.max.x - opening.min.x);
+frame.expandByScalar(16 / pixelsPerUnit);
+const width = Math.round((frame.max.x - frame.min.x) * pixelsPerUnit);
+const height = Math.round((frame.max.y - frame.min.y) * pixelsPerUnit);
+camera.setViewOffset(
+  2 * pixelsPerUnit,
+  2 * pixelsPerUnit,
+  (frame.min.x + 1) * pixelsPerUnit,
+  (1 - frame.max.y) * pixelsPerUnit,
+  width,
+  height,
+);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
@@ -130,7 +136,6 @@ for (let i = 0; i < pixels.data.length; i += 4) {
 beauty.putImageData(pixels, 0, 0);
 
 // The screen's rectangle in the frame, as fractions of its width and height.
-const opening = viewBounds(screen);
 const place = {
   left: (opening.min.x - frame.min.x) / (frame.max.x - frame.min.x),
   top: (frame.max.y - opening.max.y) / (frame.max.y - frame.min.y),
