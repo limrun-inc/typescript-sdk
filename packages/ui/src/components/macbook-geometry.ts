@@ -46,9 +46,8 @@ export function macbookDimensions(aspect: number) {
   };
 }
 
-// The lid's turn about the hinge, in radians, when closed: it lies on the base, just short of
-// touching the keys.
-export const MACBOOK_LID_CLOSED = Math.PI / 2 - 0.02;
+// The lid's turn about the hinge, in radians, when closed: a quarter turn lays it on the base.
+export const MACBOOK_LID_CLOSED = Math.PI / 2;
 // How far the lid opens from closed, in degrees. A MacBook Pro's lid stops at about 135°, and an
 // open one usually leans back a little past upright.
 export const MACBOOK_LID_MAX_DEGREES = 135;

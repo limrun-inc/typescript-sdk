@@ -11,7 +11,8 @@
 // The prepared model is the contract macbook-frame.tsx loads:
 // - Units are hundredths of the screen's width; x right, y up, z toward the viewer.
 // - The hinge is the x axis. `macbook-lid` stands upright on it, and turning that node about x
-//   opens or closes the lid. `macbook-base` holds the rest.
+//   opens or closes the lid; a quarter turn closes it flat on the keyboard deck, its edges flush
+//   with the base's. `macbook-base` holds the rest.
 // - `macbook-screen` is the display, under the lid, with plain black glass for a material and
 //   texture coordinates from (0, 0) at its bottom left to (1, 1) at its top right. Its extras carry
 //   the display's aspect ratio and `notch`, the share of its height the notch takes at its top, so
@@ -201,6 +202,50 @@ function prepareScreen(part) {
 
 rebuild(lidGroup, lid, true);
 rebuild(baseGroup, base, false);
+
+// The hinge: the axis a quarter turn about which closes the lid flat on the deck with its top edge
+// at the base's front edge. A real lid's hinge sits just in front of the lid, not at the barrel's
+// center, and closing about the barrel left the lid raised and short of the front. Turned a quarter
+// about (py, pz), a point (y, z) lands at (py + pz - z, pz - py + y): the lid's front face rests on
+// the deck, a hair above it, and its top edge reaches the front edge.
+const positions = (group, keep = () => true) => {
+  const found = [];
+  const p = [0, 0, 0];
+  for (const node of group.listChildren()) {
+    for (const primitive of node.getMesh()?.listPrimitives() ?? []) {
+      const position = primitive.getAttribute('POSITION');
+      for (let i = 0; i < position.getCount(); i++) {
+        position.getElement(i, p);
+        if (keep(p)) found.push([...p]);
+      }
+    }
+  }
+  return found;
+};
+const most = (points, axis) => Math.max(...points.map((p) => p[axis]));
+const deckTop = most(positions(base), 1);
+const frontEdge = most(positions(base), 2);
+const lidTop = most(positions(lid), 1);
+// The lid's front face, away from the hinge cover at its foot.
+const lidFace = most(
+  positions(lid, (p) => p[1] > 10),
+  2,
+);
+const sum = deckTop + 0.02 + lidFace;
+const difference = frontEdge - lidTop;
+const pivot = [(sum - difference) / 2, (sum + difference) / 2];
+for (const group of [base, lid]) {
+  for (const node of group.listChildren()) {
+    for (const primitive of node.getMesh()?.listPrimitives() ?? []) {
+      const position = primitive.getAttribute('POSITION');
+      const p = [0, 0, 0];
+      for (let i = 0; i < position.getCount(); i++) {
+        position.getElement(i, p);
+        position.setElement(i, [p[0], p[1] - pivot[0], p[2] - pivot[1]]);
+      }
+    }
+  }
+}
 const model = document.createNode('macbook').addChild(base).addChild(lid);
 for (const child of scene.listChildren()) child.dispose();
 scene.addChild(model);
@@ -214,7 +259,10 @@ await document.transform(
 );
 await io.write(output, document);
 console.log(
-  `wrote ${output}: lid leaned ${((lean * 180) / Math.PI).toFixed(1)}°, display aspect ${(
+  `wrote ${output}: hinge at y ${pivot[0].toFixed(3)}, z ${pivot[1].toFixed(3)}; lid leaned ${(
+    (lean * 180) /
+    Math.PI
+  ).toFixed(1)}°, display aspect ${(
     (screen.max[0] - screen.min[0]) /
     Math.hypot(screen.max[1] - screen.min[1], screen.max[2] - screen.min[2])
   ).toFixed(3)}`,
