@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import * as THREE from 'three';
 import {
-  MACBOOK_LID_OPEN,
+  MACBOOK_LID_MAX_DEGREES,
+  MACBOOK_LID_OPEN_DEGREES,
   MACBOOK_LID_OPENING_MS,
   MACBOOK_VERTEX_FLOATS,
-  lidOpeningAngle,
+  lidEase,
+  lidRotation,
   macbookMeshes,
   streamFit,
   streamPoint,
@@ -96,6 +98,27 @@ export default function MacbookFrame(props: MacbookFrameProps) {
   const lockedRef = useRef(positionLocked);
   lockedRef.current = positionLocked;
   const invalidateFrame = useRef<() => void>(() => undefined);
+  // The lid's opening in degrees from closed: where the slider puts it, where it is drawn, the
+  // slider's value, and the eased move under way, if any.
+  const lidTarget = useRef(MACBOOK_LID_OPEN_DEGREES);
+  const renderedLid = useRef(MACBOOK_LID_OPEN_DEGREES);
+  const [lidDegrees, setLidDegrees] = useState(MACBOOK_LID_OPEN_DEGREES);
+  const lidMotion = useRef<{ from: number; to: number; start: number; duration: number } | undefined>(
+    undefined,
+  );
+  const lidSlider = useId();
+  // Moves the lid to an opening with the eased motion the opening uses.
+  const moveLid = (to: number) => {
+    const from = renderedLid.current;
+    lidTarget.current = to;
+    lidMotion.current = {
+      from,
+      to,
+      start: performance.now(),
+      duration: (MACBOOK_LID_OPENING_MS * Math.abs(to - from)) / MACBOOK_LID_OPEN_DEGREES,
+    };
+    invalidateFrame.current();
+  };
 
   useEffect(() => invalidateFrame.current(), [view, positionLocked]);
 
@@ -164,7 +187,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     const root = new THREE.Group();
     const model = new THREE.Group();
     const lid = new THREE.Group();
-    lid.rotation.x = MACBOOK_LID_OPEN;
+    lid.rotation.x = lidRotation(renderedLid.current);
     model.add(lid);
     root.add(model);
     scene.add(root);
@@ -197,7 +220,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     const bounds = new THREE.Box3();
     const openBounds = (object: THREE.Object3D) => {
       const angle = lid.rotation.x;
-      lid.rotation.x = MACBOOK_LID_OPEN;
+      lid.rotation.x = lidRotation(MACBOOK_LID_OPEN_DEGREES);
       object.updateMatrixWorld(true);
       bounds.setFromObject(object);
       lid.rotation.x = angle;
@@ -212,13 +235,14 @@ export default function MacbookFrame(props: MacbookFrameProps) {
 
     // The lid opens once the model to open is ready: the prepared one when it loads, or the
     // built-in one. The MacBook stays hidden until then.
-    let openingStart: number | undefined;
     const reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const show = () => {
       root.visible = true;
       if (latest.current.animateLid !== false && !reducedMotion) {
-        openingStart = performance.now();
-        lid.rotation.x = lidOpeningAngle(0);
+        renderedLid.current = 0;
+        lid.rotation.x = lidRotation(0);
+        setLidDegrees(0);
+        moveLid(MACBOOK_LID_OPEN_DEGREES);
       }
       invalidate();
     };
@@ -304,7 +328,9 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         1 - ((event.clientY - rect.top) / rect.height) * 2,
       );
       ray.setFromCamera(pointer, camera);
-      const uv = ray.intersectObject(screenMesh, false)[0]?.uv;
+      // The display counts only where nothing, such as the lid turned away, stands in front of it.
+      const hit = ray.intersectObject(model, true)[0];
+      const uv = hit?.object === screenMesh ? hit.uv : undefined;
       // The display's point in the stream, which may not fill it.
       return uv && streamPoint(uv.x, uv.y, fit);
     };
@@ -420,14 +446,22 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         previousRevision = viewRevision.current;
       }
       const target = VIEWS[viewRef.current];
-      // Only the lid moves as it opens; the MacBook and the view stay where they are.
-      let opening = false;
-      if (openingStart !== undefined) {
-        const progress = (time - openingStart) / MACBOOK_LID_OPENING_MS;
-        lid.rotation.x = lidOpeningAngle(progress);
-        if (progress >= 1) openingStart = undefined;
-        else opening = true;
+      // Only the lid moves as it opens or closes; the MacBook and the view stay where they are.
+      // An eased move runs its course, and the slider's lid follows it closely.
+      let lidMoving = false;
+      const motion = lidMotion.current;
+      if (motion) {
+        const progress = motion.duration > 0 ? (time - motion.start) / motion.duration : 1;
+        renderedLid.current = motion.from + (motion.to - motion.from) * lidEase(progress);
+        if (progress >= 1) lidMotion.current = undefined;
+        else lidMoving = true;
+        setLidDegrees(renderedLid.current);
+      } else if (renderedLid.current !== lidTarget.current) {
+        renderedLid.current = THREE.MathUtils.damp(renderedLid.current, lidTarget.current, 14, dt);
+        if (Math.abs(renderedLid.current - lidTarget.current) < 0.05) renderedLid.current = lidTarget.current;
+        else lidMoving = true;
       }
+      lid.rotation.x = lidRotation(renderedLid.current);
       const targetYaw = target.yaw + yaw;
       const targetPitch = target.pitch + pitch;
       renderedYaw = THREE.MathUtils.damp(renderedYaw, targetYaw, 10, dt);
@@ -445,7 +479,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       camera.position.set(0, 0, distance);
       camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
-      if (opening || renderedYaw !== targetYaw || renderedPitch !== targetPitch || distance !== fit)
+      if (lidMoving || renderedYaw !== targetYaw || renderedPitch !== targetPitch || distance !== fit)
         invalidate();
     };
     // The screen repaints with each new frame of the stream.
@@ -511,6 +545,33 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         onKeyUp={props.onKeyUp}
       />
       <div className="rc-duo-controls" onPointerDown={(event) => event.stopPropagation()}>
+        {/* The lid is only the model's: the guest keeps running whatever its angle. */}
+        <div className="rc-duo-hinge">
+          <button
+            type="button"
+            className="rc-duo-fold"
+            onClick={() => moveLid(lidDegrees < 45 ? MACBOOK_LID_OPEN_DEGREES : 0)}
+          >
+            {lidDegrees < 45 ? 'Open' : 'Close'}
+          </button>
+          <label htmlFor={lidSlider}>Lid</label>
+          <input
+            id={lidSlider}
+            type="range"
+            min={0}
+            max={MACBOOK_LID_MAX_DEGREES}
+            step={1}
+            value={Math.round(lidDegrees)}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              lidMotion.current = undefined;
+              lidTarget.current = value;
+              setLidDegrees(value);
+              invalidateFrame.current();
+            }}
+          />
+          <output>{Math.round(lidDegrees)}°</output>
+        </div>
         <div className="rc-duo-views">
           {(Object.keys(VIEWS) as View[]).map((value) => (
             <button

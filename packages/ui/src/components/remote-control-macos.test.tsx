@@ -173,11 +173,58 @@ it('switches the MacBook to 3D, handing the stream to it', async () => {
   }
 });
 
+it('sets the lid of the 3D MacBook from its slider and button', async () => {
+  stubContainerSize(1114, 2000);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  const { host, root } = await renderMacOS({ animateLid: false });
+  try {
+    const deep = host.querySelectorAll<HTMLButtonElement>('[aria-label="MacBook rendering"] button')[1]!;
+    await act(async () => deep.click());
+    const slider = await vi.waitFor(() => host.querySelector<HTMLInputElement>('input[type="range"]')!);
+    const output = () => host.querySelector('.rc-duo-hinge output')!.textContent;
+    const toggle = () => host.querySelector<HTMLButtonElement>('.rc-duo-hinge .rc-duo-fold')!;
+    expect(slider.max).toBe('135');
+    expect(output()).toBe('100°');
+    expect(toggle().textContent).toBe('Close');
+    // React tracks the input's value, so set it the way a browser does before the input event.
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+      setValue.call(slider, '20');
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(output()).toBe('20°');
+    expect(toggle().textContent).toBe('Open');
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
 it('streams a macOS guest without the switch when the frame is off', async () => {
   stubContainerSize(1114, 2000);
   const { host, root } = await renderMacOS({ showFrame: false });
   try {
     expect(host.querySelector('[aria-label="MacBook rendering"]')).toBeNull();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+// The slider can only be dragged when nothing cancels the press on it.
+it('leaves presses on the 3D controls to the browser', async () => {
+  stubContainerSize(1114, 2000);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  const { host, root } = await renderMacOS({ animateLid: false });
+  try {
+    const deep = host.querySelectorAll<HTMLButtonElement>('[aria-label="MacBook rendering"] button')[1]!;
+    await act(async () => deep.click());
+    const slider = await vi.waitFor(() => host.querySelector<HTMLInputElement>('input[type="range"]')!);
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    await act(async () => slider.dispatchEvent(press));
+    expect(press.defaultPrevented).toBe(false);
   } finally {
     await act(async () => root.unmount());
     host.remove();

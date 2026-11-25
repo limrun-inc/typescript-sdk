@@ -1170,7 +1170,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
-      if (isDuo) return;
+      // The Duo and the 3D MacBook take their own input, and their controls, such as a slider,
+      // need the browser's default handling.
+      if (isDuo || macbook3dRef.current) return;
       event.preventDefault();
       event.stopPropagation();
 
@@ -1210,8 +1212,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // A macOS guest takes a desktop pointer: hover moves, every button, and no
       // touch emulation or Alt two-finger gestures.
       if (platform === 'macos') {
-        // The 3D MacBook takes the guest's pointer from its own screen.
-        if (macbook3dRef.current) return;
         if ('touches' in event || !ctx || !clientRef.current?.getState().controlReady) return;
         const geometry = mapClientPointToVideo(ctx, event.clientX, event.clientY);
         if (!geometry) return;

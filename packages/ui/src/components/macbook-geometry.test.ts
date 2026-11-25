@@ -7,8 +7,8 @@ import {
   MACBOOK_WIDTH,
   macbookDimensions,
   MACBOOK_LID_CLOSED,
-  MACBOOK_LID_OPEN,
-  lidOpeningAngle,
+  lidEase,
+  lidRotation,
   macbookMeshes,
   streamFit,
   streamPoint,
@@ -71,12 +71,19 @@ it('draws each material once', () => {
   expect(new Set(keys).size).toBe(keys.length);
 });
 
-it('opens the lid fast at first, slowing to a stop', () => {
-  close(lidOpeningAngle(0), MACBOOK_LID_CLOSED);
-  close(lidOpeningAngle(1), MACBOOK_LID_OPEN);
-  close(lidOpeningAngle(1.5), MACBOOK_LID_OPEN);
-  // Each tenth of the time turns the lid less than the one before.
-  const steps = Array.from({ length: 10 }, (_, i) => lidOpeningAngle(i / 10) - lidOpeningAngle((i + 1) / 10));
+it('turns the lid from closed by its opening in degrees', () => {
+  close(lidRotation(0), MACBOOK_LID_CLOSED);
+  // Upright is 90° open; past it the lid leans back.
+  close(lidRotation(90), MACBOOK_LID_CLOSED - Math.PI / 2);
+  expect(lidRotation(100)).toBeLessThan(lidRotation(90));
+});
+
+it('moves the lid fast at first, slowing to a stop', () => {
+  close(lidEase(0), 0);
+  close(lidEase(1), 1);
+  close(lidEase(1.5), 1);
+  // Each tenth of the time moves the lid less than the one before.
+  const steps = Array.from({ length: 10 }, (_, i) => lidEase((i + 1) / 10) - lidEase(i / 10));
   for (let i = 1; i < steps.length; i++) expect(steps[i]).toBeLessThan(steps[i - 1]!);
 });
 
