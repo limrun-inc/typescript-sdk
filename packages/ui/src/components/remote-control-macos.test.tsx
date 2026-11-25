@@ -231,3 +231,49 @@ it('leaves presses on the 3D controls to the browser', async () => {
     vi.restoreAllMocks();
   }
 });
+
+it('puts the stream in the screen opening of a rendered MacBook image', async () => {
+  // A 2000 × 1600 image whose opening spans the middle half of its width and the top half of its height.
+  stubContainerSize(1000, 844);
+  vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(2000);
+  vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(1600);
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  const assets = {
+    macos: { frame: 'data:image/webp;base64,', screen: { left: 0.25, top: 0.1, width: 0.5, height: 0.5 } },
+  };
+  await act(async () =>
+    root.render(
+      <RemoteControl url="wss://example.com/v1/macos_eu_test/endpointWebSocket" token="t" assets={assets} />,
+    ),
+  );
+  try {
+    const image = host.querySelector<HTMLImageElement>('img.rc-macbook-image')!;
+    await act(async () => image.dispatchEvent(new Event('load')));
+    const video = host.querySelector('video')!;
+    // The image fits the 800 pixels below the switch: 1000 × 800.
+    expect(image.style.width).toBe('1000px');
+    expect(image.style.height).toBe('800px');
+    expect(image.style.transform).toBe('translateY(22px)');
+    expect(host.querySelector('.rc-macbook')).toBeNull();
+    // The opening is 500 × 400, its center 0 across and 400 × (0.35 - 0.5) + 22 down from the middle.
+    expect(video.style.width).toBe('500px');
+    expect(video.style.height).toBe('400px');
+    const [dx, dy] = [...video.style.transform.matchAll(/([-\d.]+)px/g)].map((m) => Number(m[1]));
+    expect(dx).toBeCloseTo(0, 6);
+    expect(dy).toBeCloseTo(-98, 6);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});

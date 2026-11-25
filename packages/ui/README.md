@@ -12,13 +12,20 @@ See [examples](../../examples/) to see how it can be used.
 600 KB. Embeds that render the bare screen can import `@limrun/ui/lite` instead: the same
 `RemoteControl` API without any artwork, so `showFrame` has no phone frame to draw and the boot
 logo is omitted. Pass your own images through the `assets` prop if you want frames back.
-A macOS guest's MacBook Pro frame carries no artwork either, so both entries show it unless
-`showFrame` is false. A 2D and 3D switch above it turns the MacBook into a 3D model, like the iPhone
+A macOS guest streams inside a MacBook Pro. The default entry draws it with an image rendered from a
+3D model, its stream in the screen's opening; `@limrun/ui/lite` draws a plainer one in CSS. Neither
+draws it when `showFrame` is false. A 2D and 3D switch above it turns the MacBook into a 3D model, like the iPhone
 Duo's, with the stream on its screen; three.js loads only when a viewer picks 3D. The 3D MacBook
 opens its lid when it appears; set `animateLid={false}` to show it open from the start. That model is
 drawn by the SDK unless the host passes `macbookModelUrl`, a prepared GLB it serves and licenses, as
 `duoModelUrl` is for the iPhone Duo. `scripts/prepare-macbook-model.mjs` makes one from a CC BY
-MacBook Pro model and lists the nodes the 3D MacBook expects.
+MacBook Pro model and lists the nodes the 3D MacBook expects, and `scripts/render-macbook-frame.ts`
+renders the 2D image from it.
+
+The MacBook Pro image is rendered from
+[macbook pro M3 16 inch 2024](https://sketchfab.com/3d-models/8e34fc2b303144f78490007d91ff57c4) by
+jackbaeten, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), with its
+wallpaper removed.
 
 `onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
 `terminated` so a host can show status text without tracking the retry logic.

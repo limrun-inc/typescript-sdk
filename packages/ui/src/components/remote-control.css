@@ -136,6 +136,17 @@
   background: linear-gradient(to bottom, #8a8b90 0%, #55565b 10%, #36373b 45%, #1e1e21 100%);
 }
 
+/* The MacBook rendered from its 3D model, over the stream in its screen's opening. */
+.rc-macbook-image {
+  position: relative;
+  z-index: 30;
+  display: block;
+  flex: none;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.28));
+}
+
 /* The MacBook's 2D and 3D switch stays above the frame it sits over. */
 .rc-container > .rc-duo-mode {
   z-index: 45;

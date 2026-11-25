@@ -354,6 +354,11 @@ export type RemoteControlPlatformAssets = {
   tabletFrameLandscape?: string;
   /** Frames of iOS models whose shape differs from the default iPhone. A model without one streams frameless. */
   modelFrames?: Partial<Record<FramedIOSModel, { frame: string; frameLandscape: string }>>;
+  /**
+   * Where a macOS frame image's screen opening sits, as fractions of the image's width and height
+   * from its top left. A macOS `frame` needs it; without both, the MacBook is drawn in CSS.
+   */
+  screen?: { left: number; top: number; width: number; height: number };
   loadingLogo?: string;
 };
 
@@ -666,9 +671,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const loadingLogo = platformAssets?.loadingLogo;
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
-    const frameVisible = !isDuo && showFrame && !!frameImageSrc;
-    // A macOS guest's MacBook is drawn in CSS, so it needs no artwork and the lite entry draws it too.
+    // A macOS frame is a MacBook, laid out around its own screen opening below.
+    const frameVisible = !isDuo && platform !== 'macos' && showFrame && !!frameImageSrc;
     const macbookVisible = platform === 'macos' && showFrame;
+    // The MacBook is an image rendered from a 3D model when the assets carry one, as the default
+    // entry's do, and drawn in CSS otherwise, as for the lite entry.
+    const macbookImage =
+      macbookVisible && platformAssets?.frame && platformAssets.screen ?
+        { src: platformAssets.frame, screen: platformAssets.screen }
+      : undefined;
+    const macbookImageRef = useRef<HTMLImageElement>(null);
     const macbook3d = macbookVisible && macbookMode === '3d';
     macbook3dRef.current = macbook3d;
 
@@ -1979,6 +1991,38 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         const aspectRatio = size ? `${size.width} / ${size.height}` : undefined;
         // The MacBook takes the stream's shape, so the largest screen whose frame fits the container
         // sets both the video's size and the frame's.
+        const macbookFrame = macbookImageRef.current;
+        if (macbookImage && container) {
+          if (!macbookFrame?.naturalWidth) return;
+          // The image keeps its shape, and the stream keeps its own inside the image's opening,
+          // with black bars where the two differ.
+          const imageAspect = macbookFrame.naturalWidth / macbookFrame.naturalHeight;
+          const roomHeight = container.clientHeight - MACBOOK_TOOLBAR_SPACE;
+          const frameWidth =
+            container.clientHeight > 0 ?
+              Math.min(container.clientWidth, roomHeight * imageAspect)
+            : container.clientWidth;
+          if (frameWidth <= 0) return;
+          const frameHeight = frameWidth / imageAspect;
+          const shift = container.clientHeight > 0 ? MACBOOK_TOOLBAR_SPACE / 2 : 0;
+          const { screen } = macbookImage;
+          const dx = (screen.left + screen.width / 2 - 0.5) * frameWidth;
+          const dy = (screen.top + screen.height / 2 - 0.5) * frameHeight + shift;
+          updateVideoStyle({
+            width: `${screen.width * frameWidth}px`,
+            height: `${screen.height * frameHeight}px`,
+            transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`,
+          });
+          updateMacbookStyle({
+            width: `${frameWidth}px`,
+            height: `${frameHeight}px`,
+            transform: shift ? `translateY(${shift}px)` : undefined,
+          });
+          setMacbookAspect(size ? size.width / size.height : MACBOOK_PLACEHOLDER_ASPECT);
+          updateHomeButtonStyle(null);
+          recomputeOverlayGeometry();
+          return;
+        }
         if (macbookVisible && container) {
           const aspect = size ? size.width / size.height : MACBOOK_PLACEHOLDER_ASPECT;
           const fitWidth = (container.clientWidth * 100) / MACBOOK_WIDTH;
@@ -2086,6 +2130,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       // Also update when the frame image loads
       if (frame) frame.addEventListener('load', updateVideoPosition);
+      const macbookFrameImage = macbookImageRef.current;
+      macbookFrameImage?.addEventListener('load', updateVideoPosition);
 
       // Update when video metadata loads (to get correct intrinsic dimensions)
       video.addEventListener('loadedmetadata', updateVideoPosition);
@@ -2110,8 +2156,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         video.removeEventListener('resize', updateVideoPosition);
         video.removeEventListener('resize', bumpOnResize);
         if (frame) frame.removeEventListener('load', updateVideoPosition);
+        macbookFrameImage?.removeEventListener('load', updateVideoPosition);
       };
-    }, [config, frameVisible, macbookVisible, url, deviceModel]);
+    }, [config, frameVisible, macbookVisible, macbookImage?.src, url, deviceModel]);
 
     // Reset overlay selection when inspection is disabled; place the overlay when it starts.
     useEffect(() => {
@@ -2250,7 +2297,18 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             draggable={false}
           />
         )}
-        {macbookVisible && macbookStyle && !macbook3d && (
+        {macbookImage && !macbook3d && (
+          <img
+            ref={macbookImageRef}
+            src={macbookImage.src}
+            alt=""
+            className="rc-macbook-image"
+            // Its layout needs its size, so it is in the page, unseen, until it has loaded.
+            style={macbookStyle ?? { visibility: 'hidden' }}
+            draggable={false}
+          />
+        )}
+        {macbookVisible && !macbookImage && macbookStyle && !macbook3d && (
           <div className="rc-macbook" style={macbookStyle} aria-hidden="true">
             <div className="rc-macbook-lid">
               <div className="rc-macbook-camera" />
