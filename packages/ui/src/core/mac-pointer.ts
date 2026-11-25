@@ -53,12 +53,15 @@ export class MacPointer {
 
   constructor(
     private send: (data: ArrayBuffer) => void,
-    /** Input is blocked, as in inspect's select mode. Releases still go out. */
+    /** Input is blocked, as in inspect's select mode. A release of a button the guest holds still goes out. */
     private blocked: () => boolean = () => false,
   ) {}
 
   pointer(action: number, point: MacScreenPoint, buttons: number): void {
-    if (action !== MAC_INPUT_ACTION.UP && this.blocked()) return;
+    // A release goes out only for a button the guest holds: one whose press was blocked has nothing
+    // to let go of.
+    const releasesHeld = action === MAC_INPUT_ACTION.UP && !!this.last?.buttons;
+    if (this.blocked() && !releasesHeld) return;
     this.last = { ...point, buttons };
     this.send(createMouseControlMessage(action, point.width, point.height, point.x, point.y, buttons));
   }

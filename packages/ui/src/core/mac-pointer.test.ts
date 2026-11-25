@@ -114,6 +114,9 @@ test('blocked input sends no presses, moves or scrolls, but still lets go', () =
   pointer.scroll({ x: 30, y: 20, width: 1600, height: 1000 }, 0, 10);
   expect(pointer.touch('touchstart', [{ x: 100, y: 50 }], screen)).toBe(false);
   pointer.release();
+  // A click while blocked sends nothing, its release included, since its press never went out.
+  pointer.pointer(MAC_INPUT_ACTION.DOWN, { x: 40, y: 20, width: 1600, height: 1000 }, 1);
+  pointer.pointer(MAC_INPUT_ACTION.UP, { x: 40, y: 20, width: 1600, height: 1000 }, 0);
   expect(sent).toEqual([
     ['pointer', MAC_INPUT_ACTION.DOWN, 10, 20, 1],
     ['pointer', MAC_INPUT_ACTION.UP, 10, 20, 0],
