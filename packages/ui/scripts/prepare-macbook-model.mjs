@@ -15,7 +15,7 @@
 // - `macbook-screen` is the display, under the lid, with plain black glass for a material and
 //   texture coordinates from (0, 0) at its bottom left to (1, 1) at its top right. Its extras carry
 //   the display's aspect ratio, so the stream can be fitted into it.
-// It drops Apple's wallpaper, the logo on the lid and the lettering under the base.
+// It drops Apple's wallpaper and the lettering under the base, and keeps the logo on the lid.
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, meshopt, prune, textureCompress, weld } from '@gltf-transform/functions';
@@ -42,7 +42,7 @@ const lidGroup = byName('VCQqxpxkUlzqcJI_62');
 const baseGroup = byName('BoBvWqDHZjAeVrp_44');
 const screenNode = byName('Object_123');
 const hingeNode = byName('Object_99');
-const branding = ['Object_125', 'Object_54', 'Object_82'].map(byName);
+const lettering = ['Object_54', 'Object_82'].map(byName);
 
 // Every mesh node under a group, with its world matrix.
 const meshesUnder = (group) => {
@@ -104,7 +104,7 @@ const placeNormal = (normal, upright) => {
   return [x, y, z];
 };
 
-for (const node of branding) node.dispose();
+for (const node of lettering) node.dispose();
 
 // Rebuilds a part's meshes in the target frame, under one named node.
 const lid = document.createNode('macbook-lid');

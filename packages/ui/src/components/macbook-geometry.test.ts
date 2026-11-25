@@ -8,7 +8,7 @@ import {
   macbookDimensions,
   MACBOOK_LID_CLOSED,
   MACBOOK_LID_OPEN,
-  lidOpeningPose,
+  lidOpeningAngle,
   macbookMeshes,
   streamFit,
   streamPoint,
@@ -71,16 +71,13 @@ it('draws each material once', () => {
   expect(new Set(keys).size).toBe(keys.length);
 });
 
-it('opens the lid from closed while the view drops from above it', () => {
-  close(lidOpeningPose(0).angle, MACBOOK_LID_CLOSED);
-  close(lidOpeningPose(0).pitch, 0.45);
-  close(lidOpeningPose(1).angle, MACBOOK_LID_OPEN);
-  close(lidOpeningPose(1).pitch, 0);
-  const middle = lidOpeningPose(0.5);
-  expect(middle.angle).toBeGreaterThan(MACBOOK_LID_OPEN);
-  expect(middle.angle).toBeLessThan(MACBOOK_LID_CLOSED);
-  // Past the end, the pose holds open.
-  expect(lidOpeningPose(1.5)).toEqual(lidOpeningPose(1));
+it('opens the lid fast at first, slowing to a stop', () => {
+  close(lidOpeningAngle(0), MACBOOK_LID_CLOSED);
+  close(lidOpeningAngle(1), MACBOOK_LID_OPEN);
+  close(lidOpeningAngle(1.5), MACBOOK_LID_OPEN);
+  // Each tenth of the time turns the lid less than the one before.
+  const steps = Array.from({ length: 10 }, (_, i) => lidOpeningAngle(i / 10) - lidOpeningAngle((i + 1) / 10));
+  for (let i = 1; i < steps.length; i++) expect(steps[i]).toBeLessThan(steps[i - 1]!);
 });
 
 describe('a stream on a display of another shape', () => {

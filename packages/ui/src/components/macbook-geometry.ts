@@ -50,21 +50,16 @@ export function macbookDimensions(aspect: number) {
 // and a closed one lies on the base, just short of touching the keys.
 export const MACBOOK_LID_OPEN = -0.16;
 export const MACBOOK_LID_CLOSED = Math.PI / 2 - 0.02;
-export const MACBOOK_LID_OPENING_MS = 1600;
+export const MACBOOK_LID_OPENING_MS = 1400;
 
 /**
- * The lid opening, 0 to 1: the lid rises from closed while the view, which starts looking down
- * on the closed MacBook, drops to its own pitch. `pitch` is the extra pitch to add to the view's.
+ * The lid's angle as it opens, from 0 (closed) to 1 (open). It starts fast and slows to a stop,
+ * as a lid pushed open does.
  */
-export function lidOpeningPose(progress: number) {
-  const clamp = (x: number) => Math.max(0, Math.min(1, x));
-  const ease = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
-  const lid = ease(clamp((progress - 0.06) / 0.8));
-  const view = ease(clamp((progress - 0.3) / 0.7));
-  return {
-    angle: MACBOOK_LID_CLOSED + (MACBOOK_LID_OPEN - MACBOOK_LID_CLOSED) * lid,
-    pitch: 0.45 * (1 - view),
-  };
+export function lidOpeningAngle(progress: number) {
+  const t = Math.max(0, Math.min(1, progress));
+  const eased = 1 - Math.pow(1 - t, 3);
+  return MACBOOK_LID_CLOSED + (MACBOOK_LID_OPEN - MACBOOK_LID_CLOSED) * eased;
 }
 
 type Point = { x: number; y: number; nx: number; ny: number };

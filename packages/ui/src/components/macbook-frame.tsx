@@ -4,7 +4,7 @@ import {
   MACBOOK_LID_OPEN,
   MACBOOK_LID_OPENING_MS,
   MACBOOK_VERTEX_FLOATS,
-  lidOpeningPose,
+  lidOpeningAngle,
   macbookMeshes,
   streamFit,
   streamPoint,
@@ -218,10 +218,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       root.visible = true;
       if (latest.current.animateLid !== false && !reducedMotion) {
         openingStart = performance.now();
-        const start = lidOpeningPose(0);
-        lid.rotation.x = start.angle;
-        // The view starts above the closed lid rather than swinging up to it.
-        renderedPitch = VIEWS[viewRef.current].pitch + start.pitch;
+        lid.rotation.x = lidOpeningAngle(0);
       }
       invalidate();
     };
@@ -423,18 +420,16 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         previousRevision = viewRevision.current;
       }
       const target = VIEWS[viewRef.current];
+      // Only the lid moves as it opens; the MacBook and the view stay where they are.
       let opening = false;
-      let openingPitch = 0;
       if (openingStart !== undefined) {
         const progress = (time - openingStart) / MACBOOK_LID_OPENING_MS;
-        const pose = lidOpeningPose(progress);
-        lid.rotation.x = pose.angle;
-        openingPitch = pose.pitch;
+        lid.rotation.x = lidOpeningAngle(progress);
         if (progress >= 1) openingStart = undefined;
         else opening = true;
       }
       const targetYaw = target.yaw + yaw;
-      const targetPitch = target.pitch + pitch + openingPitch;
+      const targetPitch = target.pitch + pitch;
       renderedYaw = THREE.MathUtils.damp(renderedYaw, targetYaw, 10, dt);
       renderedPitch = THREE.MathUtils.damp(renderedPitch, targetPitch, 10, dt);
       if (Math.abs(renderedYaw - targetYaw) < 0.0005) renderedYaw = targetYaw;
