@@ -277,3 +277,71 @@ it('puts the stream in the screen opening of a rendered MacBook image', async ()
     vi.restoreAllMocks();
   }
 });
+
+// A phone or tablet has no hover and no wheel: a finger is the left button, two fingers scroll.
+it('turns touches on a macOS guest into presses, drags and scrolls', async () => {
+  stubContainerSize(1114, 2000);
+  vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(1600);
+  vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(1000);
+  const rect = { left: 0, top: 0, right: 800, bottom: 500, width: 800, height: 500, x: 0, y: 0 };
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ ...rect, toJSON: () => rect });
+  const { host, root, video } = await renderMacOS({ animateLid: false });
+  const touch = async (type: string, points: [number, number][]) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    const touches = points.map(([clientX, clientY]) => ({ clientX, clientY }));
+    Object.defineProperty(event, 'touches', { value: type === 'touchend' ? [] : touches });
+    Object.defineProperty(event, 'changedTouches', { value: touches });
+    await act(async () => video.dispatchEvent(event));
+  };
+  const sent = () =>
+    sendControl.mock.calls.map(([data]) => {
+      const view = new DataView(data as ArrayBuffer);
+      if (view.getUint8(0) === CONTROL_MSG_TYPE.INJECT_MOUSE_EVENT) {
+        return [
+          'pointer',
+          view.getUint8(1),
+          view.getInt32(2, true),
+          view.getInt32(6, true),
+          view.getInt32(14, true),
+        ];
+      }
+      if (view.getUint8(0) === CONTROL_MSG_TYPE.INJECT_MAC_SCROLL) {
+        return [
+          'scroll',
+          view.getInt32(1, true),
+          view.getInt32(5, true),
+          view.getFloat32(13, true),
+          view.getFloat32(17, true),
+        ];
+      }
+      return ['other'];
+    });
+  try {
+    sendControl.mockClear();
+    // A tap at the middle of the 800 × 500 view is a click at the middle of the 1600 × 1000 guest.
+    await touch('touchstart', [[400, 250]]);
+    await touch('touchmove', [[410, 260]]);
+    await touch('touchend', [[410, 260]]);
+    expect(sent()).toEqual([
+      ['pointer', MAC_INPUT_ACTION.DOWN, 800, 500, 1],
+      ['pointer', MAC_INPUT_ACTION.MOVE, 820, 520, 1],
+      ['pointer', MAC_INPUT_ACTION.UP, 820, 520, 0],
+    ]);
+    sendControl.mockClear();
+    // Two fingers moving up scroll the content up, as on a trackpad.
+    await touch('touchstart', [
+      [300, 300],
+      [500, 300],
+    ]);
+    await touch('touchmove', [
+      [300, 280],
+      [500, 280],
+    ]);
+    await touch('touchend', []);
+    expect(sent()).toEqual([['scroll', 800, 560, 0, 20]]);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});

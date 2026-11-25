@@ -8,7 +8,8 @@
 // A perspective camera looks square at the screen's center, so the screen's opening is a rectangle
 // the stream fills, while the rest of the MacBook keeps its perspective, as in a photograph. The
 // lid leans back, so the same camera looks down onto the keyboard. The opening is where the screen
-// shows, the notch kept in front of it.
+// shows below the notch's band, which macOS keeps clear of the notch; the black glass either side of
+// the notch stays in the frame.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -127,21 +128,25 @@ renderer.setClearColor(0x000000, 1);
 renderer.render(scene, camera);
 const mask = capture();
 
-// The frame: the MacBook with the screen's opening cleared.
+// The screen's rectangle below the notch's band, as fractions of the frame's width and height.
+const notch = Number(screen.userData['notch'] ?? 0);
+const screenTop = (frame.max.y - opening.max.y) / (frame.max.y - frame.min.y);
+const screenHeight = (opening.max.y - opening.min.y) / (frame.max.y - frame.min.y);
+const place = {
+  left: (opening.min.x - frame.min.x) / (frame.max.x - frame.min.x),
+  top: screenTop + screenHeight * notch,
+  width: (opening.max.x - opening.min.x) / (frame.max.x - frame.min.x),
+  height: screenHeight * (1 - notch),
+};
+
+// The frame: the MacBook with the screen's opening below the notch's band cleared.
 const pixels = beauty.getImageData(0, 0, width, height);
 const shown = mask.getImageData(0, 0, width, height).data;
-for (let i = 0; i < pixels.data.length; i += 4) {
+const bandEnd = Math.round(place.top * height);
+for (let i = bandEnd * width * 4; i < pixels.data.length; i += 4) {
   pixels.data[i + 3] = Math.round(pixels.data[i + 3]! * (1 - shown[i]! / 255));
 }
 beauty.putImageData(pixels, 0, 0);
-
-// The screen's rectangle in the frame, as fractions of its width and height.
-const place = {
-  left: (opening.min.x - frame.min.x) / (frame.max.x - frame.min.x),
-  top: (frame.max.y - opening.max.y) / (frame.max.y - frame.min.y),
-  width: (opening.max.x - opening.min.x) / (frame.max.x - frame.min.x),
-  height: (opening.max.y - opening.min.y) / (frame.max.y - frame.min.y),
-};
 const blob = await new Promise<Blob>((resolve) => beauty.canvas.toBlob((b) => resolve(b!), 'image/png'));
 const result = { width, height, screen: place };
 document.body.append(beauty.canvas);

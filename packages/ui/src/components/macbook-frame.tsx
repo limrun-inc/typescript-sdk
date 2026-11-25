@@ -172,13 +172,15 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       );
     };
     screenMaterial.customProgramCacheKey = () => 'macbook-fitted-screen';
-    // The display's aspect ratio: the stream's for the built-in model, the panel's for a prepared one.
+    // The display's aspect ratio, the stream's for the built-in model and the panel's for a prepared
+    // one, and the share of its height a prepared one's notch takes.
     let screenAspect = latest.current.aspect;
+    let notch = 0;
     let fit = streamFit(screenAspect, screenAspect);
     const fitStream = () => {
       const videoAspect =
         video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : screenAspect;
-      fit = streamFit(videoAspect, screenAspect);
+      fit = streamFit(videoAspect, screenAspect, notch);
       screenTexture.repeat.set(fit.repeat[0], fit.repeat[1]);
       screenTexture.offset.set(fit.offset[0], fit.offset[1]);
     };
@@ -279,6 +281,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       screenMesh = importedScreen;
       const panel = importedScreen.userData['aspect'];
       if (typeof panel === 'number' && panel > 0) screenAspect = panel;
+      const notchShare = importedScreen.userData['notch'];
+      if (typeof notchShare === 'number' && notchShare >= 0 && notchShare < 0.5) notch = notchShare;
       for (const resource of builtIn.splice(0)) resource.dispose();
       center();
     };

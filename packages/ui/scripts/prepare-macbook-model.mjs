@@ -14,7 +14,8 @@
 //   opens or closes the lid. `macbook-base` holds the rest.
 // - `macbook-screen` is the display, under the lid, with plain black glass for a material and
 //   texture coordinates from (0, 0) at its bottom left to (1, 1) at its top right. Its extras carry
-//   the display's aspect ratio, so the stream can be fitted into it.
+//   the display's aspect ratio and `notch`, the share of its height the notch takes at its top, so
+//   the stream can be fitted below the notch, as macOS fits an app there.
 // It drops Apple's wallpaper and the lettering under the base, and keeps the logo on the lid.
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
@@ -151,6 +152,9 @@ const rebuild = (group, target, upright) => {
 // lid's black glass, which a depth test cannot tell apart from it, so it moves just in front. A
 // black pixel textures it, since pruning drops texture coordinates no texture reads.
 const SCREEN_LIFT = 0.05;
+// The notch's share of the display's height. The 16-inch panel is 3456 × 2234 pixels, and macOS keeps
+// the top 74 rows, which the notch splits, out of an app's way: what remains is 16:10.
+const NOTCH = 74 / 2234;
 const blackPixel = await sharp({ create: { width: 1, height: 1, channels: 3, background: '#000' } })
   .png()
   .toBuffer();
@@ -192,7 +196,7 @@ function prepareScreen(part) {
     }
     primitive.setAttribute('TEXCOORD_0', uv).setMaterial(glass);
   }
-  part.setExtras({ aspect: (max[0] - min[0]) / (max[1] - min[1]) });
+  part.setExtras({ aspect: (max[0] - min[0]) / (max[1] - min[1]), notch: NOTCH });
 }
 
 rebuild(lidGroup, lid, true);

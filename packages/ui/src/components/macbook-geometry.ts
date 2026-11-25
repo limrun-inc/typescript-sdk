@@ -266,12 +266,17 @@ export function macbookMeshes(aspect: number): MacbookMesh[] {
 /**
  * How a stream fills a display of another shape: the texture transform that keeps its shape,
  * centered, with black bars on the sides it does not reach. Texture coordinates outside 0 to 1
- * after it are the bars.
+ * after it are the bars. A display with a notch keeps the stream below it, in the band macOS keeps
+ * clear of the notch; `notch` is the share of the display's height the notch takes at its top.
  */
-export function streamFit(videoAspect: number, screenAspect: number) {
-  const width = videoAspect >= screenAspect ? 1 : videoAspect / screenAspect;
-  const height = videoAspect >= screenAspect ? screenAspect / videoAspect : 1;
-  return { repeat: [1 / width, 1 / height], offset: [0.5 - 0.5 / width, 0.5 - 0.5 / height] } as const;
+export function streamFit(videoAspect: number, screenAspect: number, notch = 0) {
+  const area = 1 - notch;
+  const areaAspect = screenAspect / area;
+  const width = videoAspect >= areaAspect ? 1 : videoAspect / areaAspect;
+  const height = (videoAspect >= areaAspect ? areaAspect / videoAspect : 1) * area;
+  const left = (1 - width) / 2;
+  const bottom = (area - height) / 2;
+  return { repeat: [1 / width, 1 / height], offset: [(0 - left) / width, (0 - bottom) / height] } as const;
 }
 
 /**
@@ -285,6 +290,9 @@ export function streamPoint(
 ): { x: number; y: number } | undefined {
   const x = u * fit.repeat[0]! + fit.offset[0]!;
   const y = v * fit.repeat[1]! + fit.offset[1]!;
-  if (x < 0 || x > 1 || y < 0 || y > 1) return undefined;
-  return { x, y: 1 - y };
+  // A point on the stream's edge may land a rounding error past it.
+  const edge = 1e-9;
+  if (x < -edge || x > 1 + edge || y < -edge || y > 1 + edge) return undefined;
+  const clamp = (value: number) => Math.max(0, Math.min(1, value));
+  return { x: clamp(x), y: clamp(1 - y) };
 }

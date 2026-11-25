@@ -691,6 +691,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // (focus moved away, Cmd+Tab, the tab hidden) is released here, or the
     // guest keeps it held and later clicks and keys run as a shortcut.
     const heldMacKeysRef = useRef(new Set<number>());
+    // A touch screen's gesture on a macOS guest: one finger presses the left button and drags,
+    // two scroll. The point is the last one sent, in client coordinates.
+    const macTouchRef = useRef<{ mode: 'press' | 'scroll'; x: number; y: number } | null>(null);
     const releaseHeldMacKeys = useCallback(() => {
       for (const keyCode of heldMacKeysRef.current) {
         clientRef.current?.sendControl(createMacKeyMessage(MAC_INPUT_ACTION.UP, keyCode));
@@ -1180,6 +1183,84 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       return axElementAtPoint(snapshot, axX, axY);
     };
 
+    // A touch screen has no hover and no wheel. One finger presses the left button where it lands,
+    // drags with it held, and lets go where it lifts; limacvm rests the pointer at a new spot before
+    // a press, as macOS needs. Two fingers scroll, content following them as on a trackpad. A
+    // gesture that becomes a scroll lets its press go first, and stays a scroll until every finger
+    // lifts.
+    const handleMacTouch = (ctx: VideoMappingContext, event: React.TouchEvent) => {
+      const pointer = (action: number, x: number, y: number, buttons: number) => {
+        const geometry = mapClientPointToVideo(ctx, x, y);
+        if (!geometry) return;
+        sendBinaryControlMessage(
+          createMouseControlMessage(
+            action,
+            geometry.videoWidth,
+            geometry.videoHeight,
+            geometry.videoX,
+            geometry.videoY,
+            buttons,
+          ),
+        );
+      };
+      const touches = event.touches;
+      const current = macTouchRef.current;
+      const centroid = () => {
+        let x = 0;
+        let y = 0;
+        for (const touch of Array.from(touches)) {
+          x += touch.clientX;
+          y += touch.clientY;
+        }
+        return { x: x / touches.length, y: y / touches.length };
+      };
+      if (touches.length >= 2) {
+        const center = centroid();
+        if (current?.mode === 'scroll') {
+          const geometry = mapClientPointToVideo(ctx, center.x, center.y);
+          if (geometry && event.type === 'touchmove') {
+            sendBinaryControlMessage(
+              createMacScrollMessage(
+                geometry.videoWidth,
+                geometry.videoHeight,
+                geometry.videoX,
+                geometry.videoY,
+                current.x - center.x,
+                current.y - center.y,
+              ),
+            );
+          }
+        } else if (current?.mode === 'press') {
+          pointer(MAC_INPUT_ACTION.UP, current.x, current.y, 0);
+        }
+        macTouchRef.current = { mode: 'scroll', ...center };
+        return;
+      }
+      if (touches.length === 1 && event.type === 'touchstart' && !current) {
+        const touch = touches[0]!;
+        const relativeX = touch.clientX - ctx.videoRect.left - ctx.offsetX;
+        const relativeY = touch.clientY - ctx.videoRect.top - ctx.offsetY;
+        // A finger on the frame, or a letterbox bar, is not on the guest's screen.
+        if (relativeX < 0 || relativeX > ctx.actualWidth || relativeY < 0 || relativeY > ctx.actualHeight) {
+          return;
+        }
+        videoRef.current?.focus();
+        macTouchRef.current = { mode: 'press', x: touch.clientX, y: touch.clientY };
+        pointer(MAC_INPUT_ACTION.DOWN, touch.clientX, touch.clientY, 1);
+        return;
+      }
+      if (touches.length === 1 && current?.mode === 'press') {
+        const touch = touches[0]!;
+        macTouchRef.current = { mode: 'press', x: touch.clientX, y: touch.clientY };
+        pointer(MAC_INPUT_ACTION.MOVE, touch.clientX, touch.clientY, 1);
+        return;
+      }
+      if (touches.length === 0) {
+        if (current?.mode === 'press') pointer(MAC_INPUT_ACTION.UP, current.x, current.y, 0);
+        macTouchRef.current = null;
+      }
+    };
+
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
       // The Duo and the 3D MacBook take their own input, and their controls, such as a slider,
@@ -1224,7 +1305,11 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // A macOS guest takes a desktop pointer: hover moves, every button, and no
       // touch emulation or Alt two-finger gestures.
       if (platform === 'macos') {
-        if ('touches' in event || !ctx || !clientRef.current?.getState().controlReady) return;
+        if (!ctx || !clientRef.current?.getState().controlReady) return;
+        if ('touches' in event) {
+          handleMacTouch(ctx, event);
+          return;
+        }
         const geometry = mapClientPointToVideo(ctx, event.clientX, event.clientY);
         if (!geometry) return;
         const action =

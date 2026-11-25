@@ -37,7 +37,7 @@ export const defaultRemoteControlAssets: RemoteControlAssets = {
   },
   macos: {
     frame: macbookFrame,
-    // The render's screen opening, which render-macbook-frame.ts reports.
-    screen: { left: 0.131416, top: 0.02286, width: 0.737111, height: 0.620762 },
+    // The render's screen opening below the notch's band, which render-macbook-frame.ts reports.
+    screen: { left: 0.131416, top: 0.043422, width: 0.737111, height: 0.6002 },
   },
 };
