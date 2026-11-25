@@ -40,6 +40,7 @@ import { stopDaemon } from './lib/daemon';
 import { detectInstanceType, setSessionAutoStart } from './lib/instance-client-factory';
 import { deleteCreatedInstance } from './lib/instance-cleanup';
 import { defaultSleep as sleep } from '@limrun/api';
+import type { MacosClient } from '@limrun/api/resources/macos-instances-helpers';
 import {
   gradleSnapshotConfig,
   parseSnapshotConfig,
@@ -1539,6 +1540,27 @@ export abstract class BaseCommand extends Command {
     }
     this._lastResolvedInstanceId = target.id;
     return target;
+  }
+
+  /** A client for the macOS instance a command targets: --id, or the last one created here. */
+  protected async resolveMacosClient(
+    providedId: string | undefined,
+  ): Promise<{ id: string; client: MacosClient }> {
+    const target = this.resolveMacosTarget(providedId);
+    let apiUrl = target.apiUrl;
+    let token = target.token;
+    if (!apiUrl || !token) {
+      const instance = await this.client.macosInstances.get(target.id);
+      apiUrl = instance.status.apiUrl;
+      token = instance.status.token;
+    }
+    if (!apiUrl || !token) {
+      throw new Error(
+        `macOS instance ${target.id} is not ready yet. Check it with: lim macos get ${target.id}`,
+      );
+    }
+    const client = await this.client.macosInstances.createClient({ apiUrl, token, logLevel: 'warn' });
+    return { id: target.id, client };
   }
 
   protected gradleTargetFromId(id: string): LastGradleInstance {

@@ -2,22 +2,7 @@ import { Args, Flags } from '@oclif/core';
 import { startTcpTunnel } from '@limrun/api/tunnel';
 import { BaseCommand } from '../../base-command';
 import { resolveIosConnection } from '../../lib/instance-client-factory';
-
-function parseMapping(mapping: string): { localPort: number; remotePort: number } {
-  if (!/^\d+(?::\d+)?$/.test(mapping)) {
-    throw new Error('Mapping must be <port> or <localPort>:<remotePort>.');
-  }
-  const [local, remote = local] = mapping.split(':');
-  const localPort = Number(local);
-  const remotePort = Number(remote);
-  if (!Number.isInteger(localPort) || localPort < 0 || localPort > 65535) {
-    throw new Error('localPort must be between 0 and 65535.');
-  }
-  if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65535) {
-    throw new Error('remotePort must be between 1 and 65535.');
-  }
-  return { localPort, remotePort };
-}
+import { parsePortMapping } from '../../lib/port-mapping';
 
 export default class IosForward extends BaseCommand {
   static summary = 'Access a server inside the simulator through localhost';
@@ -54,7 +39,7 @@ export default class IosForward extends BaseCommand {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IosForward);
     this.setParsedFlags(flags);
-    const { localPort, remotePort } = parseMapping(args.mapping);
+    const { localPort, remotePort } = parsePortMapping(args.mapping);
 
     await this.withAuth(
       async () => {

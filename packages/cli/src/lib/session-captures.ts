@@ -6,7 +6,7 @@ import { formatBytes } from './bytes';
  * `android create` can drive them with the same code.
  */
 type CaptureClient = {
-  startRecording: (options?: { persist?: PersistOption }) => Promise<void>;
+  startRecording: (options?: { persist?: PersistOption }) => Promise<unknown>;
   startAppLogCapture: (options: { bundleId: string; persist?: PersistOption }) => Promise<void>;
   startEventCapture: (options?: { persist?: PersistOption }) => Promise<void>;
 };

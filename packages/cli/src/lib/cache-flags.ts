@@ -39,6 +39,21 @@ export const gradleSnapshotFlags = {
   }),
 };
 
+/**
+ * macOS disk snapshot flags. Like Gradle's, a macOS snapshot keeps a fixed set of state (what the
+ * guest changed since it started), so there are no paths, and snapshots are opt-in.
+ */
+export const macosSnapshotFlags = {
+  'snapshot-key': Flags.string({
+    description:
+      'Asset name the instance saves its disk snapshot under when it terminates, and restores from when --snapshot-restore-keys is omitted. The snapshot keeps every file the guest changed since it started: the home directory, installed apps and tools. The instance gets the asset permissions it needs.',
+  }),
+  'snapshot-restore-keys': Flags.string({
+    description:
+      'Comma-separated snapshot asset names to restore from, tried in this order: exact name first, then the newest name starting with it. A snapshot saved on another macOS build is skipped for the next key.',
+  }),
+};
+
 export const waitSnapshotFlag = Flags.boolean({
   aliases: ['wait-cache'],
   description:
