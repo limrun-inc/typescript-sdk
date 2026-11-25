@@ -29,6 +29,7 @@ function setup(
 ) {
   const client = {
     elementTree: jest.fn().mockResolvedValue([]),
+    readElementTree: jest.fn().mockResolvedValue({ tree: [] }),
     getDeviceInfo: jest.fn().mockResolvedValue({ orientation: 'landscapeRight' }),
     startRecordingSession: jest.fn().mockResolvedValue('run-1'),
     scroll: jest.fn().mockResolvedValue(undefined),
@@ -136,9 +137,14 @@ describe('accessibility and device info', () => {
     Object.assign(flags, { 'visible-only': true });
     await command.run();
     if (daemon) {
-      expect(sendSessionCommand).toHaveBeenCalledWith('ios_test', 'element-tree', [{ visibleOnly: true }]);
+      expect(sendSessionCommand).toHaveBeenCalledWith(
+        'ios_test',
+        'read-element-tree',
+        [{ visibleOnly: true }],
+        30_000,
+      );
     } else {
-      expect(client.elementTree).toHaveBeenCalledWith(undefined, { visibleOnly: true });
+      expect(client.readElementTree).toHaveBeenCalledWith(undefined, { visibleOnly: true });
     }
   });
 
