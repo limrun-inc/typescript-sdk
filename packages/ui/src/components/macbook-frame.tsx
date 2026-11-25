@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import {
+  MACBOOK_LID_OPEN,
+  MACBOOK_LID_OPENING_MS,
   MACBOOK_VERTEX_FLOATS,
+  lidOpeningPose,
   macbookMeshes,
   streamFit,
   streamPoint,
@@ -27,6 +30,8 @@ export interface MacbookFrameProps {
    * host; scripts/prepare-macbook-model.mjs describes the nodes it must have.
    */
   modelUrl?: string;
+  /** Opens the lid when the MacBook appears, unless the viewer prefers reduced motion. */
+  animateLid?: boolean;
 }
 
 type View = 'front' | 'desk' | 'side';
@@ -36,8 +41,6 @@ const VIEWS: Record<View, { yaw: number; pitch: number; label: string }> = {
   desk: { yaw: -0.5, pitch: 0.42, label: 'Desk' },
   side: { yaw: -1.15, pitch: 0.16, label: 'Side' },
 };
-// The lid leans back a little past upright, as an open MacBook's does.
-const LID_ANGLE = -0.16;
 const FOV = 28;
 
 function material(kind: MacbookKind, screen: THREE.Material): THREE.Material {
@@ -161,7 +164,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     const root = new THREE.Group();
     const model = new THREE.Group();
     const lid = new THREE.Group();
-    lid.rotation.x = LID_ANGLE;
+    lid.rotation.x = MACBOOK_LID_OPEN;
     model.add(lid);
     root.add(model);
     scene.add(root);
@@ -189,15 +192,39 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       if (surface !== screenMaterial) builtIn.push(surface);
     }
 
-    // The model turns about its own center.
+    // The model turns about the center it has when open, and the camera frames it open, so the
+    // view holds still while the lid opens.
     const bounds = new THREE.Box3();
+    const openBounds = (object: THREE.Object3D) => {
+      const angle = lid.rotation.x;
+      lid.rotation.x = MACBOOK_LID_OPEN;
+      object.updateMatrixWorld(true);
+      bounds.setFromObject(object);
+      lid.rotation.x = angle;
+      return bounds;
+    };
     const center = () => {
       root.rotation.set(0, 0, 0);
       model.position.set(0, 0, 0);
-      root.updateMatrixWorld(true);
-      model.position.copy(bounds.setFromObject(model).getCenter(new THREE.Vector3())).negate();
+      model.position.copy(openBounds(root).getCenter(new THREE.Vector3())).negate();
     };
     center();
+
+    // The lid opens once the model to open is ready: the prepared one when it loads, or the
+    // built-in one. The MacBook stays hidden until then.
+    let openingStart: number | undefined;
+    const reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const show = () => {
+      root.visible = true;
+      if (latest.current.animateLid !== false && !reducedMotion) {
+        openingStart = performance.now();
+        const start = lidOpeningPose(0);
+        lid.rotation.x = start.angle;
+        // The view starts above the closed lid rather than swinging up to it.
+        renderedPitch = VIEWS[viewRef.current].pitch + start.pitch;
+      }
+      invalidate();
+    };
 
     // A prepared model replaces the built-in one once it loads; until then, or if it fails, the
     // built-in one stays.
@@ -233,14 +260,20 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       if (typeof panel === 'number' && panel > 0) screenAspect = panel;
       for (const resource of builtIn.splice(0)) resource.dispose();
       center();
-      invalidate();
     };
     const modelUrl = latest.current.modelUrl;
     if (modelUrl) {
-      loadModel(modelUrl).catch((reason) => {
-        if (!disposed)
-          setError(`The MacBook model could not load: ${reason instanceof Error ? reason.message : reason}`);
-      });
+      root.visible = false;
+      loadModel(modelUrl)
+        .catch((reason) => {
+          if (!disposed)
+            setError(
+              `The MacBook model could not load: ${reason instanceof Error ? reason.message : reason}`,
+            );
+        })
+        .finally(() => {
+          if (!disposed) show();
+        });
     }
     const extent = new THREE.Vector3();
     let distance = 0;
@@ -390,8 +423,18 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         previousRevision = viewRevision.current;
       }
       const target = VIEWS[viewRef.current];
+      let opening = false;
+      let openingPitch = 0;
+      if (openingStart !== undefined) {
+        const progress = (time - openingStart) / MACBOOK_LID_OPENING_MS;
+        const pose = lidOpeningPose(progress);
+        lid.rotation.x = pose.angle;
+        openingPitch = pose.pitch;
+        if (progress >= 1) openingStart = undefined;
+        else opening = true;
+      }
       const targetYaw = target.yaw + yaw;
-      const targetPitch = target.pitch + pitch;
+      const targetPitch = target.pitch + pitch + openingPitch;
       renderedYaw = THREE.MathUtils.damp(renderedYaw, targetYaw, 10, dt);
       renderedPitch = THREE.MathUtils.damp(renderedPitch, targetPitch, 10, dt);
       if (Math.abs(renderedYaw - targetYaw) < 0.0005) renderedYaw = targetYaw;
@@ -399,8 +442,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       fitStream();
       root.rotation.set(renderedPitch, renderedYaw, 0, 'XYZ');
       // Frame the turned model's bounds, leaving a margin around them.
-      root.updateMatrixWorld(true);
-      bounds.setFromObject(root).getSize(extent);
+      openBounds(root).getSize(extent);
       const tan = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
       const fit = Math.max(extent.y / 2 / tan, extent.x / 2 / (tan * aspect)) * 1.12 + extent.z / 2;
       distance = distance ? THREE.MathUtils.damp(distance, fit, 10, dt) : fit;
@@ -408,7 +450,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       camera.position.set(0, 0, distance);
       camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
-      if (renderedYaw !== targetYaw || renderedPitch !== targetPitch || distance !== fit) invalidate();
+      if (opening || renderedYaw !== targetYaw || renderedPitch !== targetPitch || distance !== fit)
+        invalidate();
     };
     // The screen repaints with each new frame of the stream.
     let videoCallback: number | undefined;
@@ -427,6 +470,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     intersection.observe(container);
     document.addEventListener('visibilitychange', invalidate);
     resize();
+    if (!modelUrl) show();
 
     return () => {
       disposed = true;

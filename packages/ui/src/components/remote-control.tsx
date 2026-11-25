@@ -1,7 +1,6 @@
 import { createDeviceStream, type DeviceStream } from '../core/device-stream';
 import { detectPlatform, debugLog, debugWarn, safeInvoke, type DevicePlatform } from '../core/stream-utils';
 import { MACBOOK, MACBOOK_EXTRA_HEIGHT, MACBOOK_SCREEN_RAISE, MACBOOK_WIDTH } from './macbook-geometry';
-import { MacbookLidOpening } from './macbook-lid-opening';
 import type {
   ScreenshotData,
   ImperativeKeyboardEvent,
@@ -90,9 +89,9 @@ export interface RemoteControlProps {
   showFrame?: boolean;
 
   /**
-   * Opens the MacBook's lid when a macOS guest's frame appears, with the stream on its screen.
-   * Defaults to true. It never plays for a viewer who prefers reduced motion, and other
-   * platforms ignore it.
+   * Opens a macOS guest's MacBook's lid, with the stream on its screen, each time the 3D MacBook
+   * appears. Defaults to true. It never plays for a viewer who prefers reduced motion, and other
+   * platforms and the 2D frame ignore it.
    */
   animateLid?: boolean;
 
@@ -551,18 +550,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const [homeButtonStyle, setHomeButtonStyle] = useState<React.CSSProperties | null>(null);
     const [macbookStyle, setMacbookStyle] = useState<React.CSSProperties | null>(null);
-    // The 2D MacBook's layout, which the WebGL lid opening draws to match.
-    const [macbookLayout, setMacbookLayout] = useState<{
-      unit: number;
-      aspect: number;
-      shift: number;
-    } | null>(null);
+    // The stream's aspect ratio, which the 3D MacBook's built-in model takes for its screen.
+    const [macbookAspect, setMacbookAspect] = useState<number | null>(null);
     const [macbookMode, setMacbookMode] = useState<'2d' | '3d'>('2d');
     const macbook3dRef = useRef(false);
-    // WebGL opens the lid; the CSS frame does when WebGL is unavailable.
-    const [lidRenderer, setLidRenderer] = useState<'webgl' | 'css'>('webgl');
-    // True while the MacBook's lid opens, from the frame's appearance until its animation ends.
-    const [lidOpening, setLidOpening] = useState(false);
     const lastVideoSize = useRef<{ width: number; height: number } | null>(null);
     // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
@@ -678,18 +669,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const frameVisible = !isDuo && showFrame && !!frameImageSrc;
     // A macOS guest's MacBook is drawn in CSS, so it needs no artwork and the lite entry draws it too.
     const macbookVisible = platform === 'macos' && showFrame;
-    // The lid opens each time the MacBook appears, not when animateLid changes on a shown one.
-    const animateLidRef = useRef(animateLid);
-    animateLidRef.current = animateLid;
-    useEffect(() => {
-      const reduced = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      setLidOpening(macbookVisible && animateLidRef.current && !reduced);
-    }, [macbookVisible]);
     const macbook3d = macbookVisible && macbookMode === '3d';
     macbook3dRef.current = macbook3d;
-    const lidOpens = macbookVisible && !macbook3d && lidOpening && animateLid;
-    const lidOpensInWebgl = lidOpens && lidRenderer === 'webgl';
-    const lidOpensInCss = lidOpens && lidRenderer === 'css';
 
     const clientRef = useRef<DeviceStream | null>(null);
     const sendBinaryControlMessage = (data: ArrayBuffer) => clientRef.current?.sendControl(data);
@@ -2011,16 +1992,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           // The frame sits centered in the room below the switch.
           const shift = container.clientHeight > 0 ? MACBOOK_TOOLBAR_SPACE / 2 : 0;
           const radius = `${unit * MACBOOK.screenRadius}px`;
-          const raise = `${unit * MACBOOK_SCREEN_RAISE - shift}px`;
           updateVideoStyle({
             aspectRatio: `${aspect}`,
             width: `${screenWidth}px`,
             height: `${screenHeight}px`,
             borderRadius: `${radius} ${radius} 0 0`,
-            transform: `translate(-50%, calc(-50% - ${raise}))`,
-            // The opening lid carries the screen, which turns about the same hinge below its chin.
-            ['--rc-macbook-unit' as string]: `${unit}px`,
-            ['--rc-macbook-raise' as string]: raise,
+            transform: `translate(-50%, calc(-50% - ${unit * MACBOOK_SCREEN_RAISE - shift}px))`,
           });
           updateMacbookStyle({
             width: `${unit * MACBOOK_WIDTH}px`,
@@ -2028,11 +2005,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             transform: shift ? `translateY(${shift}px)` : undefined,
             ['--rc-macbook-unit' as string]: `${unit}px`,
           });
-          setMacbookLayout((current) =>
-            current && current.unit === unit && current.aspect === aspect && current.shift === shift ?
-              current
-            : { unit, aspect, shift },
-          );
+          setMacbookAspect(aspect);
           updateHomeButtonStyle(null);
           recomputeOverlayGeometry();
           return;
@@ -2278,15 +2251,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           />
         )}
         {macbookVisible && macbookStyle && !macbook3d && (
-          <div
-            className={lidOpensInWebgl ? 'rc-macbook rc-macbook-waiting' : 'rc-macbook'}
-            style={macbookStyle}
-            aria-hidden="true"
-          >
-            <div
-              className={lidOpensInCss ? 'rc-macbook-lid rc-macbook-lid-opening' : 'rc-macbook-lid'}
-              onAnimationEnd={() => setLidOpening(false)}
-            >
+          <div className="rc-macbook" style={macbookStyle} aria-hidden="true">
+            <div className="rc-macbook-lid">
               <div className="rc-macbook-camera" />
             </div>
             <div className="rc-macbook-base" />
@@ -2323,8 +2289,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           className={[
             'rc-video',
             !frameVisible && !macbookVisible && 'rc-video-frameless',
-            lidOpensInCss && 'rc-video-lid-opening',
-            lidOpensInWebgl && 'rc-macbook-waiting',
             !videoLoaded && (platform === 'macos' ? 'rc-video-loading-desktop' : 'rc-video-loading'),
           ]
             .filter(Boolean)
@@ -2362,19 +2326,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             releaseHeldMacKeys();
           }}
         />
-        {lidOpensInWebgl && macbookLayout && (
-          <MacbookLidOpening
-            opening={{ video: videoRef.current, ...macbookLayout }}
-            onFinish={() => setLidOpening(false)}
-            onFail={() => setLidRenderer('css')}
-          />
-        )}
-        {macbook3d && macbookLayout && (
+        {macbook3d && macbookAspect && (
           <Suspense fallback={null}>
             <MacbookFrame
               video={videoRef.current}
-              aspect={macbookLayout.aspect}
+              aspect={macbookAspect}
               modelUrl={macbookModelUrl}
+              animateLid={animateLid}
               watchOnly={watchOnly}
               pointer={(action, x, y, buttons) => {
                 const video = videoRef.current;

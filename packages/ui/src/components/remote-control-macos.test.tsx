@@ -22,16 +22,6 @@ const { createDeviceStream, sendControl } = vi.hoisted(() => {
 });
 vi.mock('../core/device-stream', () => ({ createDeviceStream }));
 
-// The WebGL lid opening, which a test finishes or fails; jsdom has no WebGL to draw it.
-const lidRenderer = vi.hoisted(() => ({ fail: false, finish: undefined as (() => void) | undefined }));
-vi.mock('./macbook-lid-renderer', () => ({
-  renderLidOpening: (_canvas: HTMLCanvasElement, _opening: unknown, finished: () => void) => {
-    if (lidRenderer.fail) throw new Error('Lid animation WebGL unavailable');
-    lidRenderer.finish = finished;
-    return () => undefined;
-  },
-}));
-
 afterEach(() => {
   sendControl.mockClear();
   vi.unstubAllGlobals();
@@ -141,56 +131,15 @@ it('streams a macOS guest frameless without showFrame', async () => {
   }
 });
 
-it('opens the lid in WebGL over the hidden frame, then shows the frame', async () => {
+// The lid opens only in the 3D mode, on the 3D model.
+it('shows the 2D MacBook already open', async () => {
   stubContainerSize(1114, 2000);
-  lidRenderer.fail = false;
   const { host, root, video } = await renderMacOS();
   try {
-    expect(host.querySelector('canvas.rc-macbook-opening')).not.toBeNull();
-    expect(host.querySelector('.rc-macbook')!.classList).toContain('rc-macbook-waiting');
-    expect(video.classList).toContain('rc-macbook-waiting');
-    await act(async () => lidRenderer.finish?.());
-    expect(host.querySelector('canvas.rc-macbook-opening')).toBeNull();
-    expect(host.querySelector('.rc-macbook')!.classList).not.toContain('rc-macbook-waiting');
-    expect(video.classList).not.toContain('rc-macbook-waiting');
-  } finally {
-    await act(async () => root.unmount());
-    host.remove();
-    vi.restoreAllMocks();
-  }
-});
-
-it('opens the lid in CSS without WebGL', async () => {
-  stubContainerSize(1114, 2000);
-  lidRenderer.fail = true;
-  const { host, root, video } = await renderMacOS();
-  try {
-    expect(host.querySelector('canvas.rc-macbook-opening')).toBeNull();
-    const lid = host.querySelector<HTMLElement>('.rc-macbook-lid')!;
-    expect(lid.classList).toContain('rc-macbook-lid-opening');
-    expect(video.classList).toContain('rc-video-lid-opening');
-    // The screen turns about the hinge, which needs the frame's unit beside the video too. The
-    // frame sits 22 pixels low, below the 2D and 3D switch.
-    expect(video.style.getPropertyValue('--rc-macbook-unit')).toBe('10px');
-    expect(video.style.getPropertyValue('--rc-macbook-raise')).toBe('-11px');
-    await act(async () => lid.dispatchEvent(new Event('animationend', { bubbles: true })));
-    expect(lid.classList).not.toContain('rc-macbook-lid-opening');
-    expect(video.classList).not.toContain('rc-video-lid-opening');
-  } finally {
-    await act(async () => root.unmount());
-    host.remove();
-    vi.restoreAllMocks();
-  }
-});
-
-it('keeps the lid open for a viewer who prefers reduced motion', async () => {
-  stubContainerSize(1114, 2000);
-  vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce') }));
-  const { host, root, video } = await renderMacOS();
-  try {
-    expect(host.querySelector('canvas.rc-macbook-opening')).toBeNull();
-    expect(host.querySelector('.rc-macbook-lid')!.classList).not.toContain('rc-macbook-lid-opening');
-    expect(video.classList).not.toContain('rc-video-lid-opening');
+    expect(host.querySelector('canvas')).toBeNull();
+    // The frame sits 22 pixels low, below the 2D and 3D switch.
+    expect(host.querySelector<HTMLElement>('.rc-macbook')!.style.transform).toBe('translateY(22px)');
+    expect(video.style.transform).toBe('translate(-50%, calc(-50% - -11px))');
   } finally {
     await act(async () => root.unmount());
     host.remove();
@@ -229,19 +178,6 @@ it('streams a macOS guest without the switch when the frame is off', async () =>
   const { host, root } = await renderMacOS({ showFrame: false });
   try {
     expect(host.querySelector('[aria-label="MacBook rendering"]')).toBeNull();
-  } finally {
-    await act(async () => root.unmount());
-    host.remove();
-    vi.restoreAllMocks();
-  }
-});
-
-it('shows the MacBook already open without animateLid', async () => {
-  stubContainerSize(1114, 2000);
-  const { host, root, video } = await renderMacOS({ animateLid: false });
-  try {
-    expect(host.querySelector('.rc-macbook-lid')!.classList).not.toContain('rc-macbook-lid-opening');
-    expect(video.classList).not.toContain('rc-video-lid-opening');
   } finally {
     await act(async () => root.unmount());
     host.remove();

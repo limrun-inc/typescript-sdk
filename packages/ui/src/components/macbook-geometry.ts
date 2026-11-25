@@ -43,8 +43,27 @@ export function macbookDimensions(aspect: number) {
     lidHeight,
     // A closed lid covers the base back to front.
     depth: lidHeight,
-    // The model's center seen straight on, which the CSS frame puts at the container's center.
-    centerY: (lidHeight - MACBOOK.baseHeight) / 2,
+  };
+}
+
+// The lid's turn about the hinge, in radians: an open MacBook's leans back a little past upright,
+// and a closed one lies on the base, just short of touching the keys.
+export const MACBOOK_LID_OPEN = -0.16;
+export const MACBOOK_LID_CLOSED = Math.PI / 2 - 0.02;
+export const MACBOOK_LID_OPENING_MS = 1600;
+
+/**
+ * The lid opening, 0 to 1: the lid rises from closed while the view, which starts looking down
+ * on the closed MacBook, drops to its own pitch. `pitch` is the extra pitch to add to the view's.
+ */
+export function lidOpeningPose(progress: number) {
+  const clamp = (x: number) => Math.max(0, Math.min(1, x));
+  const ease = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+  const lid = ease(clamp((progress - 0.06) / 0.8));
+  const view = ease(clamp((progress - 0.3) / 0.7));
+  return {
+    angle: MACBOOK_LID_CLOSED + (MACBOOK_LID_OPEN - MACBOOK_LID_CLOSED) * lid,
+    pitch: 0.45 * (1 - view),
   };
 }
 

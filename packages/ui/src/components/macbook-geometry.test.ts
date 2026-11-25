@@ -6,12 +6,14 @@ import {
   MACBOOK_VERTEX_FLOATS,
   MACBOOK_WIDTH,
   macbookDimensions,
+  MACBOOK_LID_CLOSED,
+  MACBOOK_LID_OPEN,
+  lidOpeningPose,
   macbookMeshes,
   streamFit,
   streamPoint,
   type MacbookMesh,
 } from './macbook-geometry';
-import { lidPose } from './macbook-lid-renderer';
 
 function bounds(meshes: MacbookMesh[]) {
   const min = [Infinity, Infinity, Infinity];
@@ -33,8 +35,8 @@ describe.each([16 / 10, 16 / 9, 4 / 3])('the MacBook for a %f screen', (aspect) 
   const meshes = macbookMeshes(aspect);
   const { lidHeight, screenHeight } = macbookDimensions(aspect);
 
-  // Head on with the lid upright, the 3D model must cover the CSS frame exactly, so the WebGL
-  // opening hands over to it without a jump.
+  // Head on with the lid upright, the built-in 3D model covers the CSS frame exactly, so the two
+  // MacBooks match.
   it('covers the CSS frame when seen head on', () => {
     const { min, max } = bounds(meshes);
     close(min[0]!, -MACBOOK_WIDTH / 2);
@@ -69,12 +71,16 @@ it('draws each material once', () => {
   expect(new Set(keys).size).toBe(keys.length);
 });
 
-it('opens the lid from closed to upright while the view drops to straight on', () => {
-  expect(lidPose(0)).toEqual({ angle: Math.PI / 2, pitch: 0.42 });
-  expect(lidPose(1)).toEqual({ angle: 0, pitch: 0 });
-  const middle = lidPose(0.5);
-  expect(middle.angle).toBeGreaterThan(0);
-  expect(middle.angle).toBeLessThan(Math.PI / 2);
+it('opens the lid from closed while the view drops from above it', () => {
+  close(lidOpeningPose(0).angle, MACBOOK_LID_CLOSED);
+  close(lidOpeningPose(0).pitch, 0.45);
+  close(lidOpeningPose(1).angle, MACBOOK_LID_OPEN);
+  close(lidOpeningPose(1).pitch, 0);
+  const middle = lidOpeningPose(0.5);
+  expect(middle.angle).toBeGreaterThan(MACBOOK_LID_OPEN);
+  expect(middle.angle).toBeLessThan(MACBOOK_LID_CLOSED);
+  // Past the end, the pose holds open.
+  expect(lidOpeningPose(1.5)).toEqual(lidOpeningPose(1));
 });
 
 describe('a stream on a display of another shape', () => {
