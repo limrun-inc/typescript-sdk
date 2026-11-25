@@ -30,6 +30,8 @@ const MacbookFrame = lazy(() => import('./macbook-frame'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, MAC_INPUT_ACTION, codeMap } from '../core/constants';
 import { macKeyCodeFor } from '../core/mac-keys';
+import { MacPointer, type MacTouchScreen, type MacTouchType } from '../core/mac-pointer';
+import { DeviceModeToggle, useDeviceView } from './device-view';
 import type { PlaybackStats } from '../core/playback-stats';
 
 import {
@@ -37,9 +39,7 @@ import {
   createInjectKeycodeMessage,
   createSetClipboardMessage,
   createTwoFingerTouchControlMessage,
-  createMouseControlMessage,
   createMacKeyMessage,
-  createMacScrollMessage,
 } from '../core/webrtc-messages';
 import { type AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
@@ -467,10 +467,6 @@ const iosModelConfig: Record<FramedIOSModel, DeviceConfig> = {
 const MACBOOK_PLACEHOLDER_ASPECT = 16 / 10;
 // Room above the MacBook for its 2D and 3D switch, which would otherwise cover the guest's menu bar.
 const MACBOOK_TOOLBAR_SPACE = 44;
-// A finger on a macOS guest's screen presses once it has held still this long, in milliseconds, or
-// moved this far, in CSS pixels; a second finger landing sooner makes the gesture a scroll instead.
-const MAC_TOUCH_HOLD_MS = 150;
-const MAC_TOUCH_SLOP = 8;
 
 // The tablet artwork has a 1600 × 2560 screen opening in an 1837 × 2798 frame.
 // Phone insets enlarge the video behind its wider bezel and hide the screen edges.
@@ -585,9 +581,9 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [macbookScreenStyle, setMacbookScreenStyle] = useState<React.CSSProperties | null>(null);
     // The stream's aspect ratio, which the 3D MacBook's built-in model takes for its screen.
     const [macbookAspect, setMacbookAspect] = useState<number | null>(null);
-    const [macbookMode, setMacbookMode] = useState<'2d' | '3d'>('2d');
-    // The 3D MacBook has drawn its first frame, so the 2D one it replaces can go.
-    const [macbook3dReady, setMacbook3dReady] = useState(false);
+    // The MacBook's 2D and 3D choice. As the 3D MacBook takes over, the 2D view lets go of the guest's
+    // pointer, since it stops taking input.
+    const macbookView = useDeviceView(() => macPointerRef.current?.release());
     const macbook3dRef = useRef(false);
     const lastVideoSize = useRef<{ width: number; height: number } | null>(null);
     // Map to track active pointers for real touch/mouse single-finger events.
@@ -711,14 +707,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         { src: platformAssets.frame, screen: platformAssets.screen }
       : undefined;
     const macbookImageRef = useRef<HTMLImageElement>(null);
-    // The viewer picked 3D, and the 3D MacBook is on screen: until its code and model load, the 2D
-    // one stays, and takes input.
-    const macbook3d = macbookVisible && macbookMode === '3d';
-    const macbook3dShown = macbook3d && macbook3dReady;
+    // The viewer picked 3D, so the 3D MacBook loads; and it is on screen, taking input. Until it is,
+    // the 2D one stays and takes input.
+    const macbook3d = macbookVisible && macbookView.mode === '3d';
+    const macbook3dShown = macbookVisible && macbookView.shown === '3d';
     macbook3dRef.current = macbook3dShown;
+    // A MacBook that goes away, with the frame turned off, comes back in 2D.
+    const chooseMacbookView = macbookView.choose;
     useEffect(() => {
-      if (!macbook3d) setMacbook3dReady(false);
-    }, [macbook3d]);
+      if (!macbookVisible) chooseMacbookView('2d');
+    }, [macbookVisible, chooseMacbookView]);
 
     // The strip beside the 2D MacBook's notch shows the stream's top row, the guest's menu bar,
     // copied in with each new frame of the stream.
@@ -761,25 +759,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // (focus moved away, Cmd+Tab, the tab hidden) is released here, or the
     // guest keeps it held and later clicks and keys run as a shortcut.
     const heldMacKeysRef = useRef(new Set<number>());
-    // A touch screen's gesture on a macOS guest: one finger presses the left button and drags, two
-    // scroll. A finger that has just landed is pending, since a second may join it to scroll. The
-    // point is the last one sent, or where a pending finger landed, in client coordinates.
-    const macTouchRef = useRef<{
-      mode: 'pending' | 'press' | 'scroll';
-      x: number;
-      y: number;
-      timer?: number;
-    } | null>(null);
-    useEffect(() => () => window.clearTimeout(macTouchRef.current?.timer), []);
-    // The last pointer event the 2D view sent a macOS guest, in the guest's pixels, so a press it
-    // started can be let go when the view hands the pointer to the 3D MacBook.
-    const macPointerRef = useRef<{
-      width: number;
-      height: number;
-      x: number;
-      y: number;
-      buttons: number;
-    } | null>(null);
+    // A macOS guest's pointer, which the 2D view and the 3D MacBook both send through. Select mode
+    // blocks it, as it blocks every device's input.
+    const inputBlockedRef = useRef(false);
+    inputBlockedRef.current = inspectMode === true;
+    const macPointerRef = useRef<MacPointer | null>(null);
+    if (!macPointerRef.current) {
+      macPointerRef.current = new MacPointer(
+        (data) => clientRef.current?.sendControl(data),
+        () => inputBlockedRef.current,
+      );
+    }
+    const macPointer = macPointerRef.current;
+    useEffect(() => () => macPointer.release(), [macPointer]);
     const releaseHeldMacKeys = useCallback(() => {
       for (const keyCode of heldMacKeysRef.current) {
         clientRef.current?.sendControl(createMacKeyMessage(MAC_INPUT_ACTION.UP, keyCode));
@@ -1269,147 +1261,28 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       return axElementAtPoint(snapshot, axX, axY);
     };
 
-    // A touch screen has no hover and no wheel. One finger presses the left button and drags with it
-    // held, and lets go where it lifts; limacvm rests the pointer at a new spot before a press, as
-    // macOS needs. The press waits until the finger moves, holds still a moment, or lifts as a tap,
-    // so a second finger landing just after it scrolls without a click. Two fingers scroll, content
-    // following them as on a trackpad. A gesture that becomes a scroll lets its press go first, and
-    // stays a scroll until every finger lifts.
-    const sendMacPointer = (
-      action: number,
-      geometry: { videoWidth: number; videoHeight: number; videoX: number; videoY: number },
-      buttons: number,
-    ) => {
-      macPointerRef.current = {
-        width: geometry.videoWidth,
-        height: geometry.videoHeight,
-        x: geometry.videoX,
-        y: geometry.videoY,
-        buttons,
-      };
-      sendBinaryControlMessage(
-        createMouseControlMessage(
-          action,
-          geometry.videoWidth,
-          geometry.videoHeight,
-          geometry.videoX,
-          geometry.videoY,
-          buttons,
-        ),
-      );
-    };
-    const sendMacTouchPointer = (
-      ctx: VideoMappingContext,
-      action: number,
-      x: number,
-      y: number,
-      buttons: number,
-    ) => {
-      const geometry = mapClientPointToVideo(ctx, x, y);
-      if (geometry) sendMacPointer(action, geometry, buttons);
-    };
-    // The 2D view stops taking input once the 3D MacBook appears, so it drops a finger still
-    // pending and lets go of any button it holds, where it was pressed.
-    const releaseMacPointer = () => {
-      window.clearTimeout(macTouchRef.current?.timer);
-      macTouchRef.current = null;
-      const last = macPointerRef.current;
-      if (!last?.buttons) return;
-      sendMacPointer(
-        MAC_INPUT_ACTION.UP,
-        { videoWidth: last.width, videoHeight: last.height, videoX: last.x, videoY: last.y },
-        0,
-      );
-    };
-    // A pending finger's press, where it landed.
-    const startMacTouchPress = (ctx: VideoMappingContext) => {
-      const current = macTouchRef.current;
-      if (current?.mode !== 'pending') return;
-      window.clearTimeout(current.timer);
-      macTouchRef.current = { mode: 'press', x: current.x, y: current.y };
-      sendMacTouchPointer(ctx, MAC_INPUT_ACTION.DOWN, current.x, current.y, 1);
-    };
-    const handleMacTouch = (ctx: VideoMappingContext, event: React.TouchEvent) => {
-      const touches = event.touches;
-      const current = macTouchRef.current;
-      const centroid = () => {
-        let x = 0;
-        let y = 0;
-        for (const touch of Array.from(touches)) {
-          x += touch.clientX;
-          y += touch.clientY;
-        }
-        return { x: x / touches.length, y: y / touches.length };
-      };
-      if (touches.length >= 2) {
-        const center = centroid();
-        if (current?.mode === 'scroll') {
-          const geometry = mapClientPointToVideo(ctx, center.x, center.y);
-          if (geometry && event.type === 'touchmove') {
-            // The fingers move in CSS pixels, and the content follows them in the guest's.
-            const scale = ctx.actualWidth > 0 ? ctx.videoWidth / ctx.actualWidth : 1;
-            sendBinaryControlMessage(
-              createMacScrollMessage(
-                geometry.videoWidth,
-                geometry.videoHeight,
-                geometry.videoX,
-                geometry.videoY,
-                (current.x - center.x) * scale,
-                (current.y - center.y) * scale,
-              ),
-            );
-          }
-        } else if (current?.mode === 'press') {
-          sendMacTouchPointer(ctx, MAC_INPUT_ACTION.UP, current.x, current.y, 0);
-        } else if (current?.mode === 'pending') {
-          window.clearTimeout(current.timer);
-        }
-        macTouchRef.current = { mode: 'scroll', ...center };
-        return;
-      }
-      if (touches.length === 1 && event.type === 'touchstart' && !current) {
-        const touch = touches[0]!;
-        const relativeX = touch.clientX - ctx.videoRect.left - ctx.offsetX;
-        const relativeY = touch.clientY - ctx.videoRect.top - ctx.offsetY;
-        // A finger on the frame, or a letterbox bar, is not on the guest's screen.
-        if (relativeX < 0 || relativeX > ctx.actualWidth || relativeY < 0 || relativeY > ctx.actualHeight) {
-          return;
-        }
-        videoRef.current?.focus();
-        macTouchRef.current = {
-          mode: 'pending',
-          x: touch.clientX,
-          y: touch.clientY,
-          timer: window.setTimeout(() => {
-            const latest = computeVideoMappingContext();
-            if (latest) startMacTouchPress(latest);
-          }, MAC_TOUCH_HOLD_MS),
+    // Where a touch screen's fingers land on a macOS guest's screen.
+    const macTouchScreen = (ctx: VideoMappingContext): MacTouchScreen => ({
+      map: (x, y) => {
+        const geometry = mapClientPointToVideo(ctx, x, y);
+        if (!geometry) return undefined;
+        return {
+          x: geometry.videoX,
+          y: geometry.videoY,
+          width: geometry.videoWidth,
+          height: geometry.videoHeight,
         };
-        return;
-      }
-      if (touches.length === 1 && current?.mode === 'pending') {
-        const touch = touches[0]!;
-        if (Math.hypot(touch.clientX - current.x, touch.clientY - current.y) < MAC_TOUCH_SLOP) return;
-        startMacTouchPress(ctx);
-      }
-      if (touches.length === 1 && macTouchRef.current?.mode === 'press') {
-        const touch = touches[0]!;
-        macTouchRef.current = { mode: 'press', x: touch.clientX, y: touch.clientY };
-        sendMacTouchPointer(ctx, MAC_INPUT_ACTION.MOVE, touch.clientX, touch.clientY, 1);
-        return;
-      }
-      if (touches.length === 0) {
-        // A tap presses and lets go where it landed. A cancelled touch, which the system took for
-        // its own gesture, is no tap.
-        if (current?.mode === 'pending') {
-          if (event.type === 'touchcancel') window.clearTimeout(current.timer);
-          else startMacTouchPress(ctx);
-        }
-        const pressed = macTouchRef.current;
-        if (pressed?.mode === 'press') sendMacTouchPointer(ctx, MAC_INPUT_ACTION.UP, pressed.x, pressed.y, 0);
-        macTouchRef.current = null;
-      }
-    };
+      },
+      // A finger on the frame, or a letterbox bar, is not on the guest's screen.
+      contains: (x, y) => {
+        const relativeX = x - ctx.videoRect.left - ctx.offsetX;
+        const relativeY = y - ctx.videoRect.top - ctx.offsetY;
+        return (
+          relativeX >= 0 && relativeX <= ctx.actualWidth && relativeY >= 0 && relativeY <= ctx.actualHeight
+        );
+      },
+      scale: ctx.actualWidth > 0 ? ctx.videoWidth / ctx.actualWidth : 1,
+    });
 
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
@@ -1457,7 +1330,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (platform === 'macos') {
         if (!ctx || !clientRef.current?.getState().controlReady) return;
         if ('touches' in event) {
-          handleMacTouch(ctx, event);
+          const touches = Array.from(event.touches, (touch) => ({ x: touch.clientX, y: touch.clientY }));
+          if (macPointer.touch(event.type as MacTouchType, touches, macTouchScreen(ctx))) {
+            videoRef.current?.focus();
+          }
           return;
         }
         const geometry = mapClientPointToVideo(ctx, event.clientX, event.clientY);
@@ -1469,7 +1345,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // Leaving the view releases every button, so none stays held in the guest.
         const buttons = event.type === 'mouseleave' ? 0 : event.buttons;
         if (event.type === 'mousedown') videoRef.current?.focus();
-        sendMacPointer(action, geometry, buttons);
+        macPointer.pointer(
+          action,
+          {
+            x: geometry.videoX,
+            y: geometry.videoY,
+            width: geometry.videoWidth,
+            height: geometry.videoHeight,
+          },
+          buttons,
+        );
         return;
       }
 
@@ -1763,15 +1648,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
           : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? ctx.actualHeight
           : 1;
-        sendBinaryControlMessage(
-          createMacScrollMessage(
-            point.videoWidth,
-            point.videoHeight,
-            point.videoX,
-            point.videoY,
-            event.deltaX * scale,
-            event.deltaY * scale,
-          ),
+        macPointer.scroll(
+          { x: point.videoX, y: point.videoY, width: point.videoWidth, height: point.videoHeight },
+          event.deltaX * scale,
+          event.deltaY * scale,
         );
         return;
       }
@@ -2665,41 +2545,35 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               model={macbookModelUrl ?? platformAssets?.model}
               animateLid={animateLid}
               watchOnly={watchOnly}
-              onReady={() => {
-                releaseMacPointer();
-                setMacbook3dReady(true);
-              }}
+              onReady={macbookView.onReady}
               pointer={(action, x, y, buttons) => {
                 const video = videoRef.current;
-                // Select mode keeps clicks from the guest, as it does in 2D.
-                if (inspectMode === true) return;
                 if (!video?.videoWidth || !clientRef.current?.getState().controlReady) return;
-                sendBinaryControlMessage(
-                  createMouseControlMessage(
-                    action === 'down' ? MAC_INPUT_ACTION.DOWN
-                    : action === 'up' ? MAC_INPUT_ACTION.UP
-                    : MAC_INPUT_ACTION.MOVE,
-                    video.videoWidth,
-                    video.videoHeight,
-                    x * video.videoWidth,
-                    y * video.videoHeight,
-                    buttons,
-                  ),
+                macPointer.pointer(
+                  action === 'down' ? MAC_INPUT_ACTION.DOWN
+                  : action === 'up' ? MAC_INPUT_ACTION.UP
+                  : MAC_INPUT_ACTION.MOVE,
+                  {
+                    x: x * video.videoWidth,
+                    y: y * video.videoHeight,
+                    width: video.videoWidth,
+                    height: video.videoHeight,
+                  },
+                  buttons,
                 );
               }}
               scroll={(x, y, deltaX, deltaY) => {
                 const video = videoRef.current;
-                if (inspectMode === true) return;
                 if (!video?.videoWidth || !clientRef.current?.getState().controlReady) return;
-                sendBinaryControlMessage(
-                  createMacScrollMessage(
-                    video.videoWidth,
-                    video.videoHeight,
-                    x * video.videoWidth,
-                    y * video.videoHeight,
-                    deltaX,
-                    deltaY,
-                  ),
+                macPointer.scroll(
+                  {
+                    x: x * video.videoWidth,
+                    y: y * video.videoHeight,
+                    width: video.videoWidth,
+                    height: video.videoHeight,
+                  },
+                  deltaX,
+                  deltaY,
                 );
               }}
               onKeyDown={handleKeyboard}
@@ -2708,23 +2582,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             />
           </Suspense>
         )}
-        {macbookVisible && (
-          <div className="rc-duo-mode" role="group" aria-label="MacBook rendering">
-            <button type="button" aria-pressed={!macbook3d} onClick={() => setMacbookMode('2d')}>
-              2D
-            </button>
-            <button
-              type="button"
-              aria-pressed={macbook3d}
-              // The 3D MacBook's code and model are still downloading.
-              aria-busy={macbook3d && !macbook3dReady}
-              title={macbook3d && !macbook3dReady ? 'Loading 3D' : undefined}
-              onClick={() => setMacbookMode('3d')}
-            >
-              3D
-            </button>
-          </div>
-        )}
+        {macbookVisible && <DeviceModeToggle view={macbookView} label="MacBook rendering" />}
         {isDuo && (
           <video
             ref={innerVideoRef}

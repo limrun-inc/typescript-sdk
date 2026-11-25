@@ -103,14 +103,20 @@ export default function DuoFrame(props: DuoFrameProps) {
       texture.magFilter = THREE.LinearFilter;
     }
 
+    let disposed = false;
     const model = createDuoModel(outerTexture, innerTexture, environmentMap.texture);
     const { device } = model;
+    // A load that outlives this effect, for a frame since rebuilt or gone, reports nothing.
     if (props.model)
       void model
         .loadAppearance(props.model)
         .then(() => invalidate())
-        .catch((reason) => setError(String(reason)))
-        .finally(() => latest.current.onReady?.());
+        .catch((reason) => {
+          if (!disposed) setError(String(reason));
+        })
+        .finally(() => {
+          if (!disposed) latest.current.onReady?.();
+        });
     else latest.current.onReady?.();
     const buttons = new DuoButtonSender(
       (button, down) => latest.current.button(button, down),
@@ -143,7 +149,6 @@ export default function DuoFrame(props: DuoFrameProps) {
     let renderedYaw = 0;
     let animation = 0;
     let visible = true;
-    let disposed = false;
     const invalidate = () => {
       if (!animation && visible && !document.hidden && !disposed) animation = requestAnimationFrame(animate);
     };
