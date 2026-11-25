@@ -7,6 +7,8 @@ import {
   MACBOOK_WIDTH,
   macbookDimensions,
   macbookMeshes,
+  streamFit,
+  streamPoint,
   type MacbookMesh,
 } from './macbook-geometry';
 import { lidPose } from './macbook-lid-renderer';
@@ -73,4 +75,30 @@ it('opens the lid from closed to upright while the view drops to straight on', (
   const middle = lidPose(0.5);
   expect(middle.angle).toBeGreaterThan(0);
   expect(middle.angle).toBeLessThan(Math.PI / 2);
+});
+
+describe('a stream on a display of another shape', () => {
+  // A 16:9 guest on the 16-inch MacBook Pro's 1.545 panel: bars above and below.
+  const fit = streamFit(16 / 9, 1.545);
+
+  it('fills a display of its own shape exactly', () => {
+    expect(streamFit(1.6, 1.6)).toEqual({ repeat: [1, 1], offset: [0, 0] });
+  });
+
+  it('keeps its shape, centered, with bars on the sides it does not reach', () => {
+    expect(streamPoint(0.5, 0.5, fit)).toEqual({ x: 0.5, y: 0.5 });
+    const top = streamPoint(0, 0.99, fit);
+    expect(top).toBeUndefined();
+    // The stream's top edge sits a bar's height below the display's.
+    const bar = (1 - 1.545 / (16 / 9)) / 2;
+    const corner = streamPoint(0, 1 - bar, fit)!;
+    expect(corner.x).toBeCloseTo(0, 5);
+    expect(corner.y).toBeCloseTo(0, 5);
+  });
+
+  it('puts bars on the sides of a narrower stream', () => {
+    const narrow = streamFit(4 / 3, 1.545);
+    expect(streamPoint(0.01, 0.5, narrow)).toBeUndefined();
+    expect(streamPoint(0.5, 0, narrow)).toEqual({ x: 0.5, y: 1 });
+  });
 });

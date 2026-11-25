@@ -243,3 +243,29 @@ export function macbookMeshes(aspect: number): MacbookMesh[] {
     return { part: group[0]!.part, kind: group[0]!.kind, vertices };
   });
 }
+
+/**
+ * How a stream fills a display of another shape: the texture transform that keeps its shape,
+ * centered, with black bars on the sides it does not reach. Texture coordinates outside 0 to 1
+ * after it are the bars.
+ */
+export function streamFit(videoAspect: number, screenAspect: number) {
+  const width = videoAspect >= screenAspect ? 1 : videoAspect / screenAspect;
+  const height = videoAspect >= screenAspect ? screenAspect / videoAspect : 1;
+  return { repeat: [1 / width, 1 / height], offset: [0.5 - 0.5 / width, 0.5 - 0.5 / height] } as const;
+}
+
+/**
+ * The stream's point, 0 to 1 from its top left, at a point of the display given as texture
+ * coordinates from its bottom left; undefined on a black bar.
+ */
+export function streamPoint(
+  u: number,
+  v: number,
+  fit: { repeat: readonly number[]; offset: readonly number[] },
+): { x: number; y: number } | undefined {
+  const x = u * fit.repeat[0]! + fit.offset[0]!;
+  const y = v * fit.repeat[1]! + fit.offset[1]!;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return undefined;
+  return { x, y: 1 - y };
+}

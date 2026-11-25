@@ -105,6 +105,12 @@ export interface RemoteControlProps {
   /** Optional prepared Duo GLB, supplied and licensed by the host application. */
   duoModelUrl?: string;
 
+  /**
+   * Optional prepared MacBook GLB for a macOS guest's 3D MacBook, supplied and licensed by the host
+   * application. scripts/prepare-macbook-model.mjs makes one; without it a built-in model is drawn.
+   */
+  macbookModelUrl?: string;
+
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to true.
   autoReconnect?: boolean;
@@ -499,6 +505,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       animateLid = true,
       deviceModel,
       duoModelUrl,
+      macbookModelUrl,
       autoReconnect,
       jitterBufferTargetMs,
       onPlaybackStats,
@@ -2367,6 +2374,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             <MacbookFrame
               video={videoRef.current}
               aspect={macbookLayout.aspect}
+              modelUrl={macbookModelUrl}
               watchOnly={watchOnly}
               pointer={(action, x, y, buttons) => {
                 const video = videoRef.current;

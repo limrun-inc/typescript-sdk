@@ -15,7 +15,10 @@ logo is omitted. Pass your own images through the `assets` prop if you want fram
 A macOS guest's MacBook Pro frame carries no artwork either, so both entries show it unless
 `showFrame` is false. Its lid opens in 3D when it appears; set `animateLid={false}` to show it open
 from the start. A 2D and 3D switch above it turns the MacBook into a 3D model, like the iPhone Duo's,
-with the stream on its screen; three.js loads only when a viewer picks 3D.
+with the stream on its screen; three.js loads only when a viewer picks 3D. That model is drawn by
+the SDK unless the host passes `macbookModelUrl`, a prepared GLB it serves and licenses, as
+`duoModelUrl` is for the iPhone Duo. `scripts/prepare-macbook-model.mjs` makes one from a CC BY
+MacBook Pro model and lists the nodes the 3D MacBook expects.
 
 `onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
 `terminated` so a host can show status text without tracking the retry logic.

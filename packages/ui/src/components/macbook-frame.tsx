@@ -1,6 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { MACBOOK_VERTEX_FLOATS, macbookMeshes, type MacbookKind } from './macbook-geometry';
+import {
+  MACBOOK_VERTEX_FLOATS,
+  macbookMeshes,
+  streamFit,
+  streamPoint,
+  type MacbookKind,
+} from './macbook-geometry';
 import { createStudioEnvironment } from './studio-environment';
 
 export interface MacbookFrameProps {
@@ -16,6 +22,11 @@ export interface MacbookFrameProps {
   onKeyUp: React.KeyboardEventHandler<HTMLDivElement>;
   /** The stage lost focus, so every key the guest holds must go up. */
   onBlur: () => void;
+  /**
+   * A prepared MacBook model to draw instead of the built-in one, supplied and licensed by the
+   * host; scripts/prepare-macbook-model.mjs describes the nodes it must have.
+   */
+  modelUrl?: string;
 }
 
 type View = 'front' | 'desk' | 'side';
@@ -29,11 +40,11 @@ const VIEWS: Record<View, { yaw: number; pitch: number; label: string }> = {
 const LID_ANGLE = -0.16;
 const FOV = 28;
 
-function material(kind: MacbookKind, screen: THREE.Texture): THREE.Material {
+function material(kind: MacbookKind, screen: THREE.Material): THREE.Material {
   const side = THREE.DoubleSide;
   switch (kind) {
     case 'screen':
-      return new THREE.MeshBasicMaterial({ map: screen, toneMapped: false, side });
+      return screen;
     case 'shell':
       return new THREE.MeshStandardMaterial({ color: 0x34353a, metalness: 0.9, roughness: 0.34, side });
     case 'glass':
@@ -120,6 +131,31 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     screenTexture.minFilter = THREE.LinearFilter;
     screenTexture.magFilter = THREE.LinearFilter;
     screenTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    // The stream keeps its shape on a display of another shape, and the glass around it stays black.
+    // Two-sided, since a prepared model's display may be wound either way.
+    const screenMaterial = new THREE.MeshBasicMaterial({
+      map: screenTexture,
+      toneMapped: false,
+      side: THREE.DoubleSide,
+    });
+    screenMaterial.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        if (any(lessThan(vMapUv, vec2(0.0))) || any(greaterThan(vMapUv, vec2(1.0)))) diffuseColor.rgb = vec3(0.0);`,
+      );
+    };
+    screenMaterial.customProgramCacheKey = () => 'macbook-fitted-screen';
+    // The display's aspect ratio: the stream's for the built-in model, the panel's for a prepared one.
+    let screenAspect = latest.current.aspect;
+    let fit = streamFit(screenAspect, screenAspect);
+    const fitStream = () => {
+      const videoAspect =
+        video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : screenAspect;
+      fit = streamFit(videoAspect, screenAspect);
+      screenTexture.repeat.set(fit.repeat[0], fit.repeat[1]);
+      screenTexture.offset.set(fit.offset[0], fit.offset[1]);
+    };
 
     // The model turns as a whole for the view; the lid turns about the hinge, the x axis.
     const root = new THREE.Group();
@@ -129,7 +165,9 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     model.add(lid);
     root.add(model);
     scene.add(root);
-    const resources: { dispose(): void }[] = [];
+    const resources: { dispose(): void }[] = [screenMaterial];
+    // The built-in model's parts, released once a prepared model replaces them.
+    const builtIn: { dispose(): void }[] = [];
     let screenMesh: THREE.Mesh | undefined;
     for (const mesh of macbookMeshes(latest.current.aspect)) {
       const geometry = new THREE.BufferGeometry();
@@ -137,7 +175,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       geometry.setAttribute('position', new THREE.InterleavedBufferAttribute(buffer, 3, 0));
       geometry.setAttribute('normal', new THREE.InterleavedBufferAttribute(buffer, 3, 3));
       geometry.setAttribute('uv', new THREE.InterleavedBufferAttribute(buffer, 2, 6));
-      const surface = material(mesh.kind, screenTexture);
+      const surface = material(mesh.kind, screenMaterial);
       const layer = LAYER[mesh.kind];
       if (layer) {
         surface.polygonOffset = true;
@@ -147,12 +185,63 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       const object = new THREE.Mesh(geometry, surface);
       if (mesh.kind === 'screen') screenMesh = object;
       (mesh.part === 'lid' ? lid : model).add(object);
-      resources.push(geometry, surface);
+      builtIn.push(geometry);
+      if (surface !== screenMaterial) builtIn.push(surface);
     }
 
     // The model turns about its own center.
-    const bounds = new THREE.Box3().setFromObject(model);
-    model.position.copy(bounds.getCenter(new THREE.Vector3())).negate();
+    const bounds = new THREE.Box3();
+    const center = () => {
+      root.rotation.set(0, 0, 0);
+      model.position.set(0, 0, 0);
+      root.updateMatrixWorld(true);
+      model.position.copy(bounds.setFromObject(model).getCenter(new THREE.Vector3())).negate();
+    };
+    center();
+
+    // A prepared model replaces the built-in one once it loads; until then, or if it fails, the
+    // built-in one stays.
+    const loadModel = async (url: string) => {
+      const [{ GLTFLoader }, { MeshoptDecoder }] = await Promise.all([
+        import('three/addons/loaders/GLTFLoader.js'),
+        import('three/addons/libs/meshopt_decoder.module.js'),
+      ]);
+      const { scene: imported } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url);
+      imported.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        resources.push(object.geometry);
+        for (const surface of Array.isArray(object.material) ? object.material : [object.material]) {
+          resources.push(surface);
+          for (const value of Object.values(surface))
+            if (value instanceof THREE.Texture) resources.push(value);
+        }
+      });
+      if (disposed) return;
+      const importedBase = imported.getObjectByName('macbook-base');
+      const importedLid = imported.getObjectByName('macbook-lid');
+      const importedScreen = imported.getObjectByName('macbook-screen');
+      if (!importedBase || !importedLid || !(importedScreen instanceof THREE.Mesh)) {
+        throw new Error('it has no macbook-base, macbook-lid or macbook-screen');
+      }
+      for (const child of [...model.children]) if (child !== lid) model.remove(child);
+      lid.clear();
+      model.add(importedBase);
+      for (const child of [...importedLid.children]) lid.add(child);
+      importedScreen.material = screenMaterial;
+      screenMesh = importedScreen;
+      const panel = importedScreen.userData['aspect'];
+      if (typeof panel === 'number' && panel > 0) screenAspect = panel;
+      for (const resource of builtIn.splice(0)) resource.dispose();
+      center();
+      invalidate();
+    };
+    const modelUrl = latest.current.modelUrl;
+    if (modelUrl) {
+      loadModel(modelUrl).catch((reason) => {
+        if (!disposed)
+          setError(`The MacBook model could not load: ${reason instanceof Error ? reason.message : reason}`);
+      });
+    }
     const extent = new THREE.Vector3();
     let distance = 0;
 
@@ -186,7 +275,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       );
       ray.setFromCamera(pointer, camera);
       const uv = ray.intersectObject(screenMesh, false)[0]?.uv;
-      return uv && { x: uv.x, y: 1 - uv.y };
+      // The display's point in the stream, which may not fill it.
+      return uv && streamPoint(uv.x, uv.y, fit);
     };
     const down = (event: PointerEvent) => {
       invalidate();
@@ -306,6 +396,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       renderedPitch = THREE.MathUtils.damp(renderedPitch, targetPitch, 10, dt);
       if (Math.abs(renderedYaw - targetYaw) < 0.0005) renderedYaw = targetYaw;
       if (Math.abs(renderedPitch - targetPitch) < 0.0005) renderedPitch = targetPitch;
+      fitStream();
       root.rotation.set(renderedPitch, renderedYaw, 0, 'XYZ');
       // Frame the turned model's bounds, leaving a margin around them.
       root.updateMatrixWorld(true);
@@ -358,14 +449,14 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       container.removeEventListener('contextmenu', contextMenu);
       container.removeEventListener('focusout', blur);
       window.removeEventListener('blur', blur);
-      for (const resource of resources) resource.dispose();
+      for (const resource of [...resources, ...builtIn]) resource.dispose();
       screenTexture.dispose();
       environmentMap.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();
     };
-  }, [props.video, props.aspect]);
+  }, [props.video, props.aspect, props.modelUrl]);
 
   return (
     // The Duo's 3D styles serve every 3D device frame.
