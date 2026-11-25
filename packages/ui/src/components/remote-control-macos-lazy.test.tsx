@@ -18,9 +18,15 @@ vi.mock('../core/device-stream', () => ({
 
 // The 3D MacBook, and three.js behind it, loads only when a viewer picks 3D, so it never holds up
 // the 2D stream's first frame. This file stays apart so no other test has loaded it first.
-const macbookFrame = vi.hoisted(() => ({ loaded: false }));
+// The download is held open until the test lets it finish, as a slow network would.
+const macbookFrame = vi.hoisted(() => {
+  let finish = () => {};
+  const arrived = new Promise<void>((resolve) => (finish = resolve));
+  return { loaded: false, arrived, finish: () => finish() };
+});
 vi.mock('./macbook-frame', async (importOriginal) => {
   macbookFrame.loaded = true;
+  await macbookFrame.arrived;
   return importOriginal();
 });
 
@@ -53,6 +59,13 @@ it('loads the 3D MacBook only when a viewer picks 3D', async () => {
     const deep = host.querySelectorAll<HTMLButtonElement>('[aria-label="MacBook rendering"] button')[1]!;
     await act(async () => deep.click());
     await vi.waitFor(() => expect(macbookFrame.loaded).toBe(true));
+    // While it downloads, the 3D button shows it is busy and the 2D MacBook stays.
+    expect(deep.getAttribute('aria-busy')).toBe('true');
+    expect(host.querySelector('.rc-macbook')).not.toBeNull();
+    macbookFrame.finish();
+    // jsdom has no WebGL, so the 3D MacBook appears with its error, and the button settles.
+    await vi.waitFor(() => expect(deep.getAttribute('aria-busy')).toBe('false'));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('WebGL');
   } finally {
     await act(async () => root.unmount());
     host.remove();

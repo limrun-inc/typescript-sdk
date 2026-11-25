@@ -2713,7 +2713,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             <button type="button" aria-pressed={!macbook3d} onClick={() => setMacbookMode('2d')}>
               2D
             </button>
-            <button type="button" aria-pressed={macbook3d} onClick={() => setMacbookMode('3d')}>
+            <button
+              type="button"
+              aria-pressed={macbook3d}
+              // The 3D MacBook's code and model are still downloading.
+              aria-busy={macbook3d && !macbook3dReady}
+              title={macbook3d && !macbook3dReady ? 'Loading 3D' : undefined}
+              onClick={() => setMacbookMode('3d')}
+            >
               3D
             </button>
           </div>

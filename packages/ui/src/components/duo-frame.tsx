@@ -30,6 +30,8 @@ export interface DuoFrameProps {
   touch: (action: number, screenId: number, x: number, y: number) => void;
   onKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
   onKeyUp: React.KeyboardEventHandler<HTMLDivElement>;
+  /** The appearance has loaded, or failed to and left the built-in body, or there is none to load. */
+  onReady?: () => void;
 }
 
 type View = 'front' | 'book' | 'table' | 'back';
@@ -69,6 +71,7 @@ export default function DuoFrame(props: DuoFrameProps) {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch {
       setError('3D rendering is unavailable in this browser. Enable WebGL to use the folding frame.');
+      latest.current.onReady?.();
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -106,7 +109,9 @@ export default function DuoFrame(props: DuoFrameProps) {
       void model
         .loadAppearance(props.model)
         .then(() => invalidate())
-        .catch((reason) => setError(String(reason)));
+        .catch((reason) => setError(String(reason)))
+        .finally(() => latest.current.onReady?.());
+    else latest.current.onReady?.();
     const buttons = new DuoButtonSender(
       (button, down) => latest.current.button(button, down),
       (reason) => setError(String(reason)),

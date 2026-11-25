@@ -5,11 +5,16 @@ import DuoView from './duo-view';
 import type { DuoFrameProps } from './duo-frame';
 import type { DuoOrientation } from '../core/duo';
 
-const renderer = vi.hoisted(() => ({ loaded: vi.fn(), released: vi.fn() }));
+const renderer = vi.hoisted(() => ({
+  loaded: vi.fn(),
+  released: vi.fn(),
+  ready: undefined as (() => void) | undefined,
+}));
 vi.mock('./duo-frame', () => {
   renderer.loaded();
   return {
-    default: function Frame() {
+    default: function Frame(props: { onReady?: () => void }) {
+      renderer.ready = props.onReady;
       useEffect(() => () => renderer.released(), []);
       return <canvas />;
     },
@@ -92,6 +97,11 @@ it('starts without a renderer, loads it on request and releases it when returnin
     expect(props.button).toHaveBeenLastCalledWith('volumeDown', false);
     expect(renderer.loaded).toHaveBeenCalledOnce();
     expect(host.querySelector('canvas')).not.toBeNull();
+    // The 3D button shows it is busy until the frame's appearance has loaded.
+    const deep = [...host.querySelectorAll('.rc-duo-mode button')].find((b) => b.textContent === '3D')!;
+    expect(deep.getAttribute('aria-busy')).toBe('true');
+    await act(async () => renderer.ready?.());
+    expect(deep.getAttribute('aria-busy')).toBe('false');
     await act(async () => root.render(<DuoView {...props} showFrame={false} />));
     expect(host.querySelector('.rc-duo-mode')).toBeNull();
     expect(host.querySelector('.rc-duo-flat-frame')).toBeNull();
