@@ -13,6 +13,7 @@ See [examples](../../examples/) to see how it can be used.
 `RemoteControl` API without any artwork, so `showFrame` has no phone frame to draw and the boot
 logo is omitted. Pass your own images through the `assets` prop if you want frames back.
 A macOS guest's MacBook Pro frame is drawn in CSS, so both entries show it unless `showFrame` is false.
+Its lid opens when it appears; set `animateLid={false}` to show it open from the start.
 
 `onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
 `terminated` so a host can show status text without tracking the retry logic.

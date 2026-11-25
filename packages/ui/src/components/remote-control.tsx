@@ -86,6 +86,13 @@ export interface RemoteControlProps {
   showFrame?: boolean;
 
   /**
+   * Opens the MacBook's lid when a macOS guest's frame appears, with the stream on its screen.
+   * Defaults to true. It never plays for a viewer who prefers reduced motion, and other
+   * platforms ignore it.
+   */
+  animateLid?: boolean;
+
+  /**
    * The iOS model behind the stream. iphone-duo enables the official iPhone Duo's native displays and
    * interactive folding frame; iphone-se and iphone-17e pick their own device frames.
    */
@@ -498,6 +505,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       openUrl,
       watchOnly: requestedWatchOnly = false,
       showFrame = true,
+      animateLid = true,
       deviceModel,
       duoModelUrl,
       autoReconnect,
@@ -545,6 +553,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const [homeButtonStyle, setHomeButtonStyle] = useState<React.CSSProperties | null>(null);
     const [macbookStyle, setMacbookStyle] = useState<React.CSSProperties | null>(null);
+    // True while the MacBook's lid opens, from the frame's appearance until its animation ends.
+    const [lidOpening, setLidOpening] = useState(false);
     const lastVideoSize = useRef<{ width: number; height: number } | null>(null);
     // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
@@ -660,6 +670,13 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const frameVisible = !isDuo && showFrame && !!frameImageSrc;
     // A macOS guest's MacBook is drawn in CSS, so it needs no artwork and the lite entry draws it too.
     const macbookVisible = platform === 'macos' && showFrame;
+    // The lid opens each time the MacBook appears, not when animateLid changes on a shown one.
+    const animateLidRef = useRef(animateLid);
+    animateLidRef.current = animateLid;
+    useEffect(() => {
+      setLidOpening(macbookVisible && animateLidRef.current);
+    }, [macbookVisible]);
+    const lidOpens = macbookVisible && lidOpening && animateLid;
 
     const clientRef = useRef<DeviceStream | null>(null);
     const sendBinaryControlMessage = (data: ArrayBuffer) => clientRef.current?.sendControl(data);
@@ -1975,12 +1992,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           const unit = screenWidth / 100;
           const screenHeight = screenWidth / aspect;
           const radius = `${unit * MACBOOK.screenRadius}px`;
+          const raise = `${unit * MACBOOK_SCREEN_RAISE}px`;
           updateVideoStyle({
             aspectRatio: `${aspect}`,
             width: `${screenWidth}px`,
             height: `${screenHeight}px`,
             borderRadius: `${radius} ${radius} 0 0`,
-            transform: `translate(-50%, calc(-50% - ${unit * MACBOOK_SCREEN_RAISE}px))`,
+            transform: `translate(-50%, calc(-50% - ${raise}))`,
+            // The opening lid carries the screen, which turns about the same hinge below its chin.
+            ['--rc-macbook-unit' as string]: `${unit}px`,
+            ['--rc-macbook-raise' as string]: raise,
           });
           updateMacbookStyle({
             width: `${unit * MACBOOK_WIDTH}px`,
@@ -2233,7 +2254,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         )}
         {macbookVisible && macbookStyle && (
           <div className="rc-macbook" style={macbookStyle} aria-hidden="true">
-            <div className="rc-macbook-lid">
+            <div
+              className={lidOpens ? 'rc-macbook-lid rc-macbook-lid-opening' : 'rc-macbook-lid'}
+              onAnimationEnd={() => setLidOpening(false)}
+            >
               <div className="rc-macbook-camera" />
             </div>
             <div className="rc-macbook-base" />
@@ -2270,6 +2294,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           className={[
             'rc-video',
             !frameVisible && !macbookVisible && 'rc-video-frameless',
+            lidOpens && 'rc-video-lid-opening',
             !videoLoaded && (platform === 'macos' ? 'rc-video-loading-desktop' : 'rc-video-loading'),
           ]
             .filter(Boolean)

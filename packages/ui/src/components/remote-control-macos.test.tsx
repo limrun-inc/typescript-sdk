@@ -34,7 +34,7 @@ function macKeys() {
     .map((view) => [view.getUint8(1), view.getUint16(2, true)]);
 }
 
-async function renderMacOS(props: { showFrame?: boolean } = {}) {
+async function renderMacOS(props: { showFrame?: boolean; animateLid?: boolean } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
     'ResizeObserver',
@@ -124,6 +124,39 @@ it('streams a macOS guest frameless without showFrame', async () => {
   try {
     expect(host.querySelector('.rc-macbook')).toBeNull();
     expect(video.classList).toContain('rc-video-frameless');
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+it('opens the MacBook lid, with the screen on it, once the frame appears', async () => {
+  stubContainerSize(1114, 2000);
+  const { host, root, video } = await renderMacOS();
+  try {
+    const lid = host.querySelector<HTMLElement>('.rc-macbook-lid')!;
+    expect(lid.classList).toContain('rc-macbook-lid-opening');
+    expect(video.classList).toContain('rc-video-lid-opening');
+    // The screen turns about the hinge, which needs the frame's unit beside the video too.
+    expect(video.style.getPropertyValue('--rc-macbook-unit')).toBe('10px');
+    expect(video.style.getPropertyValue('--rc-macbook-raise')).toBe('11px');
+    await act(async () => lid.dispatchEvent(new Event('animationend', { bubbles: true })));
+    expect(lid.classList).not.toContain('rc-macbook-lid-opening');
+    expect(video.classList).not.toContain('rc-video-lid-opening');
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+it('shows the MacBook already open without animateLid', async () => {
+  stubContainerSize(1114, 2000);
+  const { host, root, video } = await renderMacOS({ animateLid: false });
+  try {
+    expect(host.querySelector('.rc-macbook-lid')!.classList).not.toContain('rc-macbook-lid-opening');
+    expect(video.classList).not.toContain('rc-video-lid-opening');
   } finally {
     await act(async () => root.unmount());
     host.remove();

@@ -136,6 +136,55 @@
   background: linear-gradient(to bottom, #8a8b90 0%, #55565b 10%, #36373b 45%, #1e1e21 100%);
 }
 
+/*
+ * The lid opening: it starts edge-on, lying on the base, and turns up about the hinge at the
+ * base's back edge. The screen is the video, a sibling of the lid, so it turns with the same
+ * perspective about the same hinge, 2.4 units below its bottom edge.
+ */
+.rc-macbook-lid-opening,
+.rc-video-lid-opening {
+  animation-duration: 1.2s;
+  animation-timing-function: cubic-bezier(0.45, 0, 0.2, 1);
+  animation-fill-mode: both;
+}
+
+.rc-macbook-lid-opening {
+  transform-origin: 50% 100%;
+  animation-name: rc-macbook-lid-open;
+}
+
+.rc-video-lid-opening {
+  transform-origin: 50% calc(100% + var(--rc-macbook-unit) * 2.4);
+  animation-name: rc-macbook-screen-open;
+}
+
+@keyframes rc-macbook-lid-open {
+  from {
+    transform: perspective(calc(var(--u) * 1000)) rotateX(-89deg);
+  }
+  to {
+    transform: perspective(calc(var(--u) * 1000)) rotateX(0deg);
+  }
+}
+
+@keyframes rc-macbook-screen-open {
+  from {
+    transform: translate(-50%, calc(-50% - var(--rc-macbook-raise)))
+      perspective(calc(var(--rc-macbook-unit) * 1000)) rotateX(-89deg);
+  }
+  to {
+    transform: translate(-50%, calc(-50% - var(--rc-macbook-raise)))
+      perspective(calc(var(--rc-macbook-unit) * 1000)) rotateX(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rc-macbook-lid-opening,
+  .rc-video-lid-opening {
+    animation: none;
+  }
+}
+
 /* The thumb scoop in the front edge that lifts the lid. */
 .rc-macbook-base::before {
   content: '';
