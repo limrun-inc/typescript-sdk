@@ -157,12 +157,24 @@ it('switches the MacBook to 3D, handing the stream to it', async () => {
     expect(flat!.getAttribute('aria-pressed')).toBe('true');
     await act(async () => deep!.click());
     expect(deep!.getAttribute('aria-pressed')).toBe('true');
-    // The 2D frame goes, and the video only feeds the 3D screen.
+    // jsdom has no WebGL, so the 3D MacBook says so instead of drawing.
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('WebGL'));
+    // The 2D frame goes once the 3D one is up, and the video only feeds the 3D screen.
     expect(host.querySelector('.rc-macbook')).toBeNull();
     expect(video.style.opacity).toBe('0');
     expect(video.style.pointerEvents).toBe('none');
-    // jsdom has no WebGL, so the 3D MacBook says so instead of drawing.
-    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('WebGL'));
+    // The 3D stage takes the keyboard.
+    const stage = host.querySelector<HTMLElement>('.rc-duo-stage')!;
+    sendControl.mockClear();
+    await act(async () => stage.focus());
+    await act(async () => {
+      stage.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA', key: 'a', bubbles: true }));
+      stage.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA', key: 'a', bubbles: true }));
+    });
+    expect(macKeys()).toEqual([
+      [MAC_INPUT_ACTION.DOWN, 0x00],
+      [MAC_INPUT_ACTION.UP, 0x00],
+    ]);
     await act(async () => flat!.click());
     expect(host.querySelector('.rc-macbook')).not.toBeNull();
     expect(video.style.opacity).toBe('');
@@ -290,6 +302,14 @@ it('puts the stream in the screen opening of a rendered MacBook image', async ()
     expect(dx).toBeCloseTo(0, 6);
     expect(dy).toBeCloseTo(-98, 6);
     expect(host.querySelector('canvas.rc-macbook-band')).toBeNull();
+    // Black glass fills the whole opening behind the stream, where a stream of another shape
+    // would leave bars.
+    const glass = host.querySelector<HTMLElement>('.rc-macbook-screen')!;
+    expect(glass.style.width).toBe('500px');
+    expect(glass.style.height).toBe('400px');
+    const [glassX, glassY] = offsets(glass.style.transform);
+    expect(glassX).toBeCloseTo(0, 6);
+    expect(glassY).toBeCloseTo(80 + 200 - 400 + 22, 6);
   } finally {
     await act(async () => root.unmount());
     host.remove();
@@ -383,7 +403,68 @@ it('turns touches on a macOS guest into presses, drags and scrolls', async () =>
       [500, 280],
     ]);
     await touch('touchend', []);
-    expect(sent()).toEqual([['scroll', 800, 560, 0, 20]]);
+    // The fingers moved 20 CSS pixels over a view at half the guest's size: 40 of the guest's.
+    expect(sent()).toEqual([['scroll', 800, 560, 0, 40]]);
+    sendControl.mockClear();
+    // A second finger landing just after the first scrolls, with no click.
+    await touch('touchstart', [[300, 300]]);
+    await touch('touchstart', [
+      [300, 300],
+      [500, 300],
+    ]);
+    await touch('touchmove', [
+      [300, 290],
+      [500, 290],
+    ]);
+    await touch('touchend', []);
+    expect(sent()).toEqual([['scroll', 800, 580, 0, 20]]);
+    sendControl.mockClear();
+    // A tap that does not move clicks where it landed.
+    await touch('touchstart', [[200, 100]]);
+    await touch('touchend', [[200, 100]]);
+    expect(sent()).toEqual([
+      ['pointer', MAC_INPUT_ACTION.DOWN, 400, 200, 1],
+      ['pointer', MAC_INPUT_ACTION.UP, 400, 200, 0],
+    ]);
+    sendControl.mockClear();
+    // A finger that holds still presses, so it can drag from there.
+    await touch('touchstart', [[200, 100]]);
+    await vi.waitFor(() => expect(sent()).toEqual([['pointer', MAC_INPUT_ACTION.DOWN, 400, 200, 1]]));
+    await touch('touchend', [[200, 100]]);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
+
+it('opens the 3D MacBook before the 2D image has loaded', async () => {
+  stubContainerSize(1000, 844);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  const assets = {
+    macos: { frame: 'data:image/webp;base64,', screen: { left: 0, top: 0, width: 1, height: 1 } },
+  };
+  await act(async () =>
+    root.render(
+      <RemoteControl url="wss://example.com/v1/macos_eu_test/endpointWebSocket" token="t" assets={assets} />,
+    ),
+  );
+  try {
+    // The image has no size yet, so the 2D layout waits, but 3D needs only the stream's shape.
+    const deep = host.querySelectorAll<HTMLButtonElement>('[aria-label="MacBook rendering"] button')[1]!;
+    await act(async () => deep.click());
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('WebGL'));
   } finally {
     await act(async () => root.unmount());
     host.remove();

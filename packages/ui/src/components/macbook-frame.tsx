@@ -34,6 +34,11 @@ export interface MacbookFrameProps {
   modelUrl?: string;
   /** Opens the lid when the MacBook appears, unless the viewer prefers reduced motion. */
   animateLid?: boolean;
+  /**
+   * The MacBook is on screen, or the reason it cannot be is. Until then the stage is unseen, so the
+   * host can keep showing what it had.
+   */
+  onReady?: () => void;
 }
 
 type View = 'front' | 'desk' | 'side';
@@ -90,6 +95,9 @@ export default function MacbookFrame(props: MacbookFrameProps) {
   const latest = useRef(props);
   latest.current = props;
   const [error, setError] = useState<string>();
+  const [shown, setShown] = useState(false);
+  // The lid opens once when the MacBook first appears, not again when a new stream shape rebuilds it.
+  const opened = useRef(false);
   const [view, setView] = useState<View>('front');
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -126,11 +134,17 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     const container = host.current;
     const video = props.video;
     if (!container || !video) return;
+    const reveal = () => {
+      setShown(true);
+      latest.current.onReady?.();
+    };
+    setError(undefined);
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch {
       setError('3D rendering is unavailable in this browser. Enable WebGL to use the 3D MacBook.');
+      reveal();
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -244,13 +258,15 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     const reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const show = () => {
       root.visible = true;
-      if (latest.current.animateLid !== false && !reducedMotion) {
+      if (!opened.current && latest.current.animateLid !== false && !reducedMotion) {
         renderedLid.current = 0;
         lid.rotation.x = lidRotation(0);
         setLidDegrees(0);
         moveLid(MACBOOK_LID_OPEN_DEGREES);
       }
+      opened.current = true;
       invalidate();
+      reveal();
     };
 
     // A prepared model replaces the built-in one once it loads; until then, or if it fails, the
@@ -261,16 +277,21 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         import('three/addons/libs/meshopt_decoder.module.js'),
       ]);
       const { scene: imported } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url);
+      const loaded: { dispose(): void }[] = [];
       imported.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
-        resources.push(object.geometry);
+        loaded.push(object.geometry);
         for (const surface of Array.isArray(object.material) ? object.material : [object.material]) {
-          resources.push(surface);
-          for (const value of Object.values(surface))
-            if (value instanceof THREE.Texture) resources.push(value);
+          loaded.push(surface);
+          for (const value of Object.values(surface)) if (value instanceof THREE.Texture) loaded.push(value);
         }
       });
-      if (disposed) return;
+      // A model that arrives after the MacBook is gone is released here, since cleanup has run.
+      if (disposed) {
+        for (const resource of loaded) resource.dispose();
+        return;
+      }
+      resources.push(...loaded);
       const importedBase = imported.getObjectByName('macbook-base');
       const importedLid = imported.getObjectByName('macbook-lid');
       const importedScreen = imported.getObjectByName('macbook-screen');
@@ -542,7 +563,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
 
   return (
     // The Duo's 3D styles serve every 3D device frame.
-    <div className="rc-duo rc-macbook-3d">
+    // Unseen until its first frame, so the host's 2D MacBook shows while the model loads.
+    <div className="rc-duo rc-macbook-3d" style={shown ? undefined : { visibility: 'hidden' }}>
       <div
         ref={host}
         className="rc-duo-stage"
