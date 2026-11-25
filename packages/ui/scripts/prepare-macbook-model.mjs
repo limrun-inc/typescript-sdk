@@ -1,12 +1,13 @@
-// Prepares a MacBook Pro model for RemoteControl's 3D MacBook (the macbookModelUrl prop) from
+// Prepares src/assets/macbook_pro_16.glb, the model RemoteControl's 3D MacBook draws, from
 // "macbook pro M3 16 inch 2024" by jackbaeten, CC BY 4.0:
 // https://sketchfab.com/3d-models/8e34fc2b303144f78490007d91ff57c4
-// A host that serves the result credits the author as CC BY asks.
+// Whoever serves the result, the package or a host through macbookModelUrl, credits the author as
+// CC BY asks; the README does for the package.
 //
 // Download the model's GLB (2k textures) from Sketchfab, then, from a folder with
 // @gltf-transform/core, @gltf-transform/extensions and @gltf-transform/functions 4.x, meshoptimizer
 // and sharp installed:
-//   node prepare-macbook-model.mjs macbook_pro_m3_16_inch_2024.glb macbook.glb
+//   node prepare-macbook-model.mjs macbook_pro_m3_16_inch_2024.glb macbook_pro_16.glb
 //
 // The prepared model is the contract macbook-frame.tsx loads:
 // - Units are hundredths of the screen's width; x right, y up, z toward the viewer.

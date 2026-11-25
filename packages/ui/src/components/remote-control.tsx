@@ -105,8 +105,9 @@ export interface RemoteControlProps {
   duoModelUrl?: string;
 
   /**
-   * Optional prepared MacBook GLB for a macOS guest's 3D MacBook, supplied and licensed by the host
-   * application. scripts/prepare-macbook-model.mjs makes one; without it a built-in model is drawn.
+   * A prepared MacBook GLB for a macOS guest's 3D MacBook, in place of the one the default entry
+   * bundles. scripts/prepare-macbook-model.mjs makes one. Without either, as with the lite entry,
+   * a simpler built-in MacBook is drawn.
    */
   macbookModelUrl?: string;
 
@@ -361,8 +362,19 @@ export type RemoteControlPlatformAssets = {
    * the strip either side of the notch shows the stream's top row, as if its menu bar reached up.
    */
   screen?: { left: number; top: number; width: number; height: number; notch?: number };
+  /**
+   * The prepared GLB a macOS guest's 3D MacBook draws; scripts/prepare-macbook-model.mjs describes
+   * the nodes it must have. The default entry's loads only when a viewer picks 3D.
+   */
+  model?: RemoteControlModel;
   loadingLogo?: string;
 };
+
+/**
+ * A prepared 3D model, as a URL or a function that resolves to one when the 3D view first needs it.
+ * A function keeps a large model out of the page until then; pass the same function each render.
+ */
+export type RemoteControlModel = string | (() => Promise<string>);
 
 export type RemoteControlAssets = Partial<Record<DevicePlatform, RemoteControlPlatformAssets>>;
 
@@ -2616,7 +2628,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             <MacbookFrame
               video={videoRef.current}
               aspect={macbookAspect}
-              modelUrl={macbookModelUrl}
+              model={macbookModelUrl ?? platformAssets?.model}
               animateLid={animateLid}
               watchOnly={watchOnly}
               onReady={() => setMacbook3dReady(true)}

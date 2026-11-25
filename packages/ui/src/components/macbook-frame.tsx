@@ -13,6 +13,7 @@ import {
   type MacbookKind,
 } from './macbook-geometry';
 import { createStudioEnvironment } from './studio-environment';
+import type { RemoteControlModel } from './remote-control';
 
 export interface MacbookFrameProps {
   video: HTMLVideoElement | null;
@@ -28,10 +29,10 @@ export interface MacbookFrameProps {
   /** The stage lost focus, so every key the guest holds must go up. */
   onBlur: () => void;
   /**
-   * A prepared MacBook model to draw instead of the built-in one, supplied and licensed by the
-   * host; scripts/prepare-macbook-model.mjs describes the nodes it must have.
+   * A prepared MacBook model to draw instead of the built-in one; scripts/prepare-macbook-model.mjs
+   * describes the nodes it must have.
    */
-  modelUrl?: string;
+  model?: RemoteControlModel;
   /** Opens the lid when the MacBook appears, unless the viewer prefers reduced motion. */
   animateLid?: boolean;
   /**
@@ -76,6 +77,18 @@ function material(kind: MacbookKind, screen: THREE.Material): THREE.Material {
     case 'scoop':
       return new THREE.MeshStandardMaterial({ color: 0x18181b, metalness: 0.6, roughness: 0.5, side });
   }
+}
+
+// The bytes of a base64 data URL.
+function dataUrlBytes(url: string): ArrayBuffer {
+  const comma = url.indexOf(',');
+  const header = url.slice(0, comma);
+  const body = url.slice(comma + 1);
+  if (!header.endsWith(';base64')) return new TextEncoder().encode(decodeURIComponent(body)).buffer;
+  const binary = atob(body);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
 }
 
 // Layers drawn on another surface win its depth test however far the camera is.
@@ -271,12 +284,19 @@ export default function MacbookFrame(props: MacbookFrameProps) {
 
     // A prepared model replaces the built-in one once it loads; until then, or if it fails, the
     // built-in one stays.
-    const loadModel = async (url: string) => {
-      const [{ GLTFLoader }, { MeshoptDecoder }] = await Promise.all([
+    const loadModel = async (source: RemoteControlModel) => {
+      const [{ GLTFLoader }, { MeshoptDecoder }, url] = await Promise.all([
         import('three/addons/loaders/GLTFLoader.js'),
         import('three/addons/libs/meshopt_decoder.module.js'),
+        typeof source === 'string' ? source : source(),
       ]);
-      const { scene: imported } = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(url);
+      const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+      // A bundled model arrives as a data URL. Decoding it here, rather than fetching it, keeps a
+      // page whose content security policy limits connect-src working.
+      const { scene: imported } =
+        url.startsWith('data:') ?
+          await loader.parseAsync(dataUrlBytes(url), '')
+        : await loader.loadAsync(url);
       const loaded: { dispose(): void }[] = [];
       imported.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
@@ -312,10 +332,10 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       for (const resource of builtIn.splice(0)) resource.dispose();
       center();
     };
-    const modelUrl = latest.current.modelUrl;
-    if (modelUrl) {
+    const modelSource = latest.current.model;
+    if (modelSource) {
       root.visible = false;
-      loadModel(modelUrl)
+      loadModel(modelSource)
         .catch((reason) => {
           if (!disposed)
             setError(
@@ -529,7 +549,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     intersection.observe(container);
     document.addEventListener('visibilitychange', invalidate);
     resize();
-    if (!modelUrl) show();
+    if (!modelSource) show();
 
     return () => {
       disposed = true;
@@ -559,7 +579,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       renderer.forceContextLoss();
       renderer.domElement.remove();
     };
-  }, [props.video, props.aspect, props.modelUrl]);
+  }, [props.video, props.aspect, props.model]);
 
   return (
     // The Duo's 3D styles serve every 3D device frame.
