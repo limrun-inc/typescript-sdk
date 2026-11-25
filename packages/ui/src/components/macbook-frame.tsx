@@ -37,8 +37,8 @@ export interface MacbookFrameProps {
   /** Opens the lid when the MacBook appears, unless the viewer prefers reduced motion. */
   animateLid?: boolean;
   /**
-   * The MacBook is on screen, or the reason it cannot be is. Until then the stage is unseen, so the
-   * host can keep showing what it had.
+   * The MacBook has drawn its first frame, or the reason it cannot is on screen. Until then the
+   * stage is unseen, so the host can keep showing what it had.
    */
   onReady?: () => void;
 }
@@ -258,6 +258,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     // The lid opens once the model to open is ready: the prepared one when it loads, or the
     // built-in one. The MacBook stays hidden until then.
     const reducedMotion = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // The stage appears once a frame of the MacBook is on its canvas, not while it is still empty.
+    let revealOnFrame = false;
     const show = () => {
       root.visible = true;
       if (!opened.current && latest.current.animateLid !== false && !reducedMotion) {
@@ -267,8 +269,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         moveLid(MACBOOK_LID_OPEN_DEGREES);
       }
       opened.current = true;
+      revealOnFrame = true;
       invalidate();
-      reveal();
     };
 
     // A prepared model replaces the built-in one once it loads; until then, or if it fails, the
@@ -511,6 +513,10 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       camera.position.set(0, 0, distance);
       camera.lookAt(0, 0, 0);
       renderer.render(scene, camera);
+      if (revealOnFrame) {
+        revealOnFrame = false;
+        reveal();
+      }
       if (lidMoving || renderedYaw !== targetYaw || renderedPitch !== targetPitch || distance !== fit)
         invalidate();
     };

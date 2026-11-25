@@ -771,6 +771,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       timer?: number;
     } | null>(null);
     useEffect(() => () => window.clearTimeout(macTouchRef.current?.timer), []);
+    // The last pointer event the 2D view sent a macOS guest, in the guest's pixels, so a press it
+    // started can be let go when the view hands the pointer to the 3D MacBook.
+    const macPointerRef = useRef<{
+      width: number;
+      height: number;
+      x: number;
+      y: number;
+      buttons: number;
+    } | null>(null);
     const releaseHeldMacKeys = useCallback(() => {
       for (const keyCode of heldMacKeysRef.current) {
         clientRef.current?.sendControl(createMacKeyMessage(MAC_INPUT_ACTION.UP, keyCode));
@@ -1266,15 +1275,18 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // so a second finger landing just after it scrolls without a click. Two fingers scroll, content
     // following them as on a trackpad. A gesture that becomes a scroll lets its press go first, and
     // stays a scroll until every finger lifts.
-    const sendMacTouchPointer = (
-      ctx: VideoMappingContext,
+    const sendMacPointer = (
       action: number,
-      x: number,
-      y: number,
+      geometry: { videoWidth: number; videoHeight: number; videoX: number; videoY: number },
       buttons: number,
     ) => {
-      const geometry = mapClientPointToVideo(ctx, x, y);
-      if (!geometry) return;
+      macPointerRef.current = {
+        width: geometry.videoWidth,
+        height: geometry.videoHeight,
+        x: geometry.videoX,
+        y: geometry.videoY,
+        buttons,
+      };
       sendBinaryControlMessage(
         createMouseControlMessage(
           action,
@@ -1284,6 +1296,29 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           geometry.videoY,
           buttons,
         ),
+      );
+    };
+    const sendMacTouchPointer = (
+      ctx: VideoMappingContext,
+      action: number,
+      x: number,
+      y: number,
+      buttons: number,
+    ) => {
+      const geometry = mapClientPointToVideo(ctx, x, y);
+      if (geometry) sendMacPointer(action, geometry, buttons);
+    };
+    // The 2D view stops taking input once the 3D MacBook appears, so it drops a finger still
+    // pending and lets go of any button it holds, where it was pressed.
+    const releaseMacPointer = () => {
+      window.clearTimeout(macTouchRef.current?.timer);
+      macTouchRef.current = null;
+      const last = macPointerRef.current;
+      if (!last?.buttons) return;
+      sendMacPointer(
+        MAC_INPUT_ACTION.UP,
+        { videoWidth: last.width, videoHeight: last.height, videoX: last.x, videoY: last.y },
+        0,
       );
     };
     // A pending finger's press, where it landed.
@@ -1364,8 +1399,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         return;
       }
       if (touches.length === 0) {
-        // A tap presses and lets go where it landed.
-        if (current?.mode === 'pending') startMacTouchPress(ctx);
+        // A tap presses and lets go where it landed. A cancelled touch, which the system took for
+        // its own gesture, is no tap.
+        if (current?.mode === 'pending') {
+          if (event.type === 'touchcancel') window.clearTimeout(current.timer);
+          else startMacTouchPress(ctx);
+        }
         const pressed = macTouchRef.current;
         if (pressed?.mode === 'press') sendMacTouchPointer(ctx, MAC_INPUT_ACTION.UP, pressed.x, pressed.y, 0);
         macTouchRef.current = null;
@@ -1430,16 +1469,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // Leaving the view releases every button, so none stays held in the guest.
         const buttons = event.type === 'mouseleave' ? 0 : event.buttons;
         if (event.type === 'mousedown') videoRef.current?.focus();
-        sendBinaryControlMessage(
-          createMouseControlMessage(
-            action,
-            geometry.videoWidth,
-            geometry.videoHeight,
-            geometry.videoX,
-            geometry.videoY,
-            buttons,
-          ),
-        );
+        sendMacPointer(action, geometry, buttons);
         return;
       }
 
@@ -2635,7 +2665,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
               model={macbookModelUrl ?? platformAssets?.model}
               animateLid={animateLid}
               watchOnly={watchOnly}
-              onReady={() => setMacbook3dReady(true)}
+              onReady={() => {
+                releaseMacPointer();
+                setMacbook3dReady(true);
+              }}
               pointer={(action, x, y, buttons) => {
                 const video = videoRef.current;
                 // Select mode keeps clicks from the guest, as it does in 2D.

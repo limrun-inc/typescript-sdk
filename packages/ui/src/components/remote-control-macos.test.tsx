@@ -471,3 +471,67 @@ it('opens the 3D MacBook before the 2D image has loaded', async () => {
     vi.restoreAllMocks();
   }
 });
+
+// The 2D view takes input until the 3D MacBook appears, so it must let go of what it holds then.
+it('lets go of a 2D press and drops a pending touch when the 3D MacBook appears', async () => {
+  stubContainerSize(1114, 2000);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(1600);
+  vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(1000);
+  const rect = { left: 0, top: 0, right: 800, bottom: 500, width: 800, height: 500, x: 0, y: 0 };
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ ...rect, toJSON: () => rect });
+  const { host, root, video } = await renderMacOS({ animateLid: false });
+  const touch = async (type: string, points: [number, number][]) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    const touches = points.map(([clientX, clientY]) => ({ clientX, clientY }));
+    Object.defineProperty(event, 'touches', {
+      value: type === 'touchend' || type === 'touchcancel' ? [] : touches,
+    });
+    Object.defineProperty(event, 'changedTouches', { value: touches });
+    await act(async () => video.dispatchEvent(event));
+  };
+  const pointers = () =>
+    sendControl.mock.calls
+      .map(([data]) => new DataView(data as ArrayBuffer))
+      .filter((view) => view.getUint8(0) === CONTROL_MSG_TYPE.INJECT_MOUSE_EVENT)
+      .map((view) => [
+        view.getUint8(1),
+        view.getInt32(2, true),
+        view.getInt32(6, true),
+        view.getInt32(14, true),
+      ]);
+  try {
+    sendControl.mockClear();
+    // A cancelled touch, which the system took for its own gesture, clicks nothing.
+    await touch('touchstart', [[200, 100]]);
+    await touch('touchcancel', [[200, 100]]);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(pointers()).toEqual([]);
+    // A button held in 2D, and a finger still pending, when the 3D MacBook takes over.
+    await act(async () =>
+      video.dispatchEvent(
+        new MouseEvent('mousedown', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 400,
+          clientY: 250,
+          buttons: 1,
+        }),
+      ),
+    );
+    await touch('touchstart', [[200, 100]]);
+    const deep = host.querySelectorAll<HTMLButtonElement>('[aria-label="MacBook rendering"] button')[1]!;
+    await act(async () => deep.click());
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('WebGL'));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    // The button goes up where it went down, and the pending finger never presses.
+    expect(pointers()).toEqual([
+      [MAC_INPUT_ACTION.DOWN, 800, 500, 1],
+      [MAC_INPUT_ACTION.UP, 800, 500, 0],
+    ]);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.restoreAllMocks();
+  }
+});
