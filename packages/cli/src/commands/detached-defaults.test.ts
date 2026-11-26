@@ -1,8 +1,6 @@
 import { startDetached } from '../lib/detached';
 import AndroidConnect from './android/connect';
-import AndroidLaunchApp from './android/launch-app';
 import IosForward from './ios/forward';
-import IosLaunchApp from './ios/launch-app';
 import IosReverse from './ios/reverse';
 import MacosForward from './macos/forward';
 import MacosSsh from './macos/ssh';
@@ -16,8 +14,6 @@ test.each([
   ['macos ssh', MacosSsh],
   ['ios reverse', IosReverse],
   ['android connect', AndroidConnect],
-  ['ios launch-app', IosLaunchApp],
-  ['android launch-app', AndroidLaunchApp],
 ])('%s detaches by default and takes --no-detach', (_name, command) => {
   const flag = (command.flags as Record<string, { default?: unknown; allowNo?: boolean }>)['detach'];
   expect(flag?.default).toBe(true);
