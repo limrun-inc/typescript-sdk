@@ -8,7 +8,7 @@ export const buildSnapshotFlags = {
   }),
   'snapshot-ttl': Flags.string({
     description:
-      'Expire the saved disk snapshot after this duration from publication, for example 12h or 7d. Defaults to bucket retention.',
+      'Expire the saved disk snapshot after this duration from publication, for example 12h or 7d. Defaults to 30 days.',
   }),
   'snapshot-key': Flags.string({
     aliases: ['cache-key'],

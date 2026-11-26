@@ -17,7 +17,7 @@ import {
 
 /** A disk snapshot of the Xcode workspace, restored at creation and published at termination. */
 export type XcodeSnapshotConfig = {
-  /** Maximum age of the saved archive in seconds, counted from publication. */
+  /** Maximum age of the saved archive in seconds, counted from publication. Defaults to 30 days. */
   ttlSeconds?: number;
   /** Save under this organization-scoped key at termination. Defaults to restoring this key too. */
   key?: string;

@@ -710,7 +710,7 @@ create an uncached instance.
 
 Pass `--snapshot-ttl 7d` to expire a saved Xcode or Gradle snapshot seven days
 after publication. Each save starts a new TTL. A restore does not extend it.
-Omitting the flag on a new instance uses the storage bucket's retention policy.
+Omitting the flag on a new instance sets a 30-day TTL.
 
 From the project directory:
 
