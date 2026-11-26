@@ -92,7 +92,7 @@ export default class MacosCreate extends BaseCommand {
       'snapshot-restore-keys': flags['snapshot-restore-keys'],
     });
     if (snapshot && flags['reuse-if-exists']) {
-      this.info('A reused instance keeps the permissions it was created with, and its disk is not restored.');
+      this.info('A reused instance keeps the permissions it was created with.');
     }
     const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events || flags.perf;
     // Parsed before the instance is created so a bad TTL fails before billing.
@@ -122,28 +122,15 @@ export default class MacosCreate extends BaseCommand {
         },
         ...(Object.keys(metadata).length > 0 && { metadata }),
       };
-      const sentAt = Date.now();
-      const { data: instance, response } = await this.client.macosInstances.create(params).withResponse();
-      // When the request reached the API, on the API's clock, so no local clock skew enters it.
-      const requestedAt = Date.parse(response.headers.get('date') ?? '') - (Date.now() - sentAt);
+      const instance = await this.client.macosInstances.create(params);
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
       registerCreatedInstance(instance);
 
       if (snapshot || wantsCaptures) {
         const guest = await this.client.macosInstances.createClient({ instance, logLevel: 'none' });
-        if (snapshot) {
-          // A reused instance already holds its own work on disk; a restore would overwrite it.
-          // An instance another caller created moments earlier counts as new, which is safe: the
-          // guest runs one restore per instance, so a second request joins the first, and it
-          // never restores into a guest that was never asked to.
-          if (flags['reuse-if-exists'] && wasCreatedBefore(instance.metadata.createdAt, requestedAt)) {
-            this.info(
-              `Reused macOS instance ${instance.metadata.id}; its disk is kept and no snapshot is restored.`,
-            );
-          } else {
-            await restoreMacosSnapshot(guest, snapshot, (line) => this.info(line));
-          }
-        }
+        // The guest restores at most once: a reused instance that already restored keeps its disk,
+        // and the request reports that earlier restore instead of running another.
+        if (snapshot) await restoreMacosSnapshot(guest, snapshot, (line) => this.info(line));
         if (wantsCaptures) {
           const started = await startPersistedCaptures(guest, {
             record: flags.record,
@@ -171,20 +158,4 @@ export default class MacosCreate extends BaseCommand {
       this.output(`Delete with: lim macos delete ${instance.metadata.id}`);
     });
   }
-}
-
-/**
- * The rounding allowed when comparing an instance's creation time with the request's arrival, both
- * on the API's clock: the Date header and creation times carry whole seconds.
- */
-const TIMESTAMP_ROUNDING_MS = 2000;
-
-/**
- * wasCreatedBefore reports whether an instance existed before this command asked for one, with
- * both times on the API's clock. An instance whose age can't be read is treated as reused, so a
- * restore never overwrites a live disk.
- */
-function wasCreatedBefore(createdAt: string | undefined, requestedAt: number): boolean {
-  const created = createdAt ? Date.parse(createdAt) : NaN;
-  return !(created >= requestedAt - TIMESTAMP_ROUNDING_MS);
 }

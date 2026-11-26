@@ -28,9 +28,18 @@ const RESTORE_REASONS: Record<string, string> = {
   disk_headroom: 'the instance does not have enough free disk space',
   transport: 'the transfer failed',
   extract: 'extracting the snapshot failed',
+  not_eligible: 'the instance is being deleted',
+  restore_deadline: 'the restore did not finish in time',
 };
 
-/** restoreMacosSnapshot restores and reports progress, a line per phase and per download tenth. */
+const RESTORE_TERMINAL = new Set(['restored', 'skipped', 'failed']);
+
+/**
+ * restoreMacosSnapshot restores and reports progress, a line per phase and per download tenth.
+ *
+ * A guest restores at most once. A request to a guest that already ran its restore, such as a
+ * reused instance, gets that restore's outcome as its first event; the disk is left as it is.
+ */
 export async function restoreMacosSnapshot(
   guest: MacosClient,
   flags: MacosSnapshotFlags,
@@ -39,10 +48,15 @@ export async function restoreMacosSnapshot(
   const started = Date.now();
   let lastPhase = '';
   let lastTenth = -1;
+  let earlier: boolean | undefined;
   const result = await guest.restoreSnapshot({
     ...(flags.key && { key: flags.key }),
     ...(flags.restoreKeys && { restoreKeys: flags.restoreKeys }),
     onProgress: (progress) => {
+      // A restore this request starts begins with a running phase; one that already ended
+      // answers with its outcome alone.
+      earlier ??= RESTORE_TERMINAL.has(progress.phase) && progress.reason !== 'not_eligible';
+      if (earlier) return;
       if (progress.phase === 'downloading' && progress.totalBytes) {
         const tenth = Math.floor(((progress.doneBytes ?? 0) / progress.totalBytes) * 10);
         if (tenth === lastTenth) return;
@@ -63,10 +77,22 @@ export async function restoreMacosSnapshot(
     },
   });
   const seconds = Math.round((Date.now() - started) / 1000);
+  const why = (result.reason && RESTORE_REASONS[result.reason]) ?? result.message ?? result.reason;
+  if (earlier) {
+    info(
+      result.phase === 'restored' ?
+        `Disk snapshot: this instance already restored ${
+          result.key ?? 'a snapshot'
+        }; its disk is kept as it is.`
+      : `Disk snapshot: this instance already ran its restore, which ended ${result.phase}${
+          why ? `: ${why}` : ''
+        }. Nothing more is restored.`,
+    );
+    return result;
+  }
   if (result.phase === 'restored') {
     info(`Disk snapshot: restored ${result.key ?? ''} in ${seconds}s.`.replace('  ', ' '));
   } else {
-    const why = (result.reason && RESTORE_REASONS[result.reason]) ?? result.message ?? result.reason;
     info(
       `Disk snapshot: ${result.phase === 'skipped' ? 'nothing restored' : 'restore failed'}${
         why ? `: ${why}` : ''

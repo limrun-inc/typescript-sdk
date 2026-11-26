@@ -64,15 +64,51 @@ describe('restoreMacosSnapshot', () => {
     ]);
   });
 
+  it('keeps the disk of a guest that already restored, without progress lines', async () => {
+    const lines: string[] = [];
+    const result = await restoreMacosSnapshot(
+      guest([{ phase: 'restored', key: 'my-mac', matchKind: 'exact_hit' }]),
+      { key: 'my-mac' },
+      (line) => lines.push(line),
+    );
+    expect(result.phase).toBe('restored');
+    expect(lines).toEqual([
+      'Disk snapshot: this instance already restored my-mac; its disk is kept as it is.',
+    ]);
+  });
+
+  it('reports how an earlier restore ended', async () => {
+    const lines: string[] = [];
+    await restoreMacosSnapshot(guest([{ phase: 'failed', reason: 'checksum' }]), { key: 'my-mac' }, (line) =>
+      lines.push(line),
+    );
+    expect(lines).toEqual([
+      'Disk snapshot: this instance already ran its restore, which ended failed: the downloaded snapshot did not match its checksum. Nothing more is restored.',
+    ]);
+  });
+
+  it('does not take a guest being deleted for an earlier restore', async () => {
+    const lines: string[] = [];
+    await restoreMacosSnapshot(
+      guest([{ phase: 'skipped', reason: 'not_eligible', message: 'the instance is being deleted' }]),
+      { key: 'my-mac' },
+      (line) => lines.push(line),
+    );
+    expect(lines).toEqual([
+      'Disk snapshot: nothing restored: the instance is being deleted. The instance starts without it.',
+    ]);
+  });
+
   it('explains why nothing was restored', async () => {
     const lines: string[] = [];
     const result = await restoreMacosSnapshot(
-      guest([{ phase: 'skipped', reason: 'no_match' }]),
+      guest([{ phase: 'resolving' }, { phase: 'skipped', reason: 'no_match' }]),
       { restoreKeys: ['main'] },
       (line) => lines.push(line),
     );
     expect(result.phase).toBe('skipped');
     expect(lines).toEqual([
+      'Disk snapshot: resolving...',
       'Disk snapshot: nothing restored: no snapshot matches the restore keys. The instance starts without it.',
     ]);
   });

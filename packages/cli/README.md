@@ -868,7 +868,8 @@ lim macos drag --from 200,300 --to 600,300   # Also lim macos swipe, as on iOS
 Keep the guest's changes between instances with a disk snapshot, an asset of kind `MacOSSnapshot`.
 `--snapshot-key` names the asset the instance saves under when it terminates, and restores from
 once it is ready; `--snapshot-restore-keys` restores from other names first. The CLI adds the asset
-permissions to the instance's role.
+permissions to the instance's role. An instance restores at most once, so one that `--reuse-if-exists`
+returns after it already restored keeps its disk as it is.
 
 ```bash
 lim macos create --snapshot-key my-mac
