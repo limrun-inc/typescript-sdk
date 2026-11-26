@@ -10,6 +10,7 @@ import { macosSnapshotPermissions, restoreMacosSnapshot } from '../../lib/macos-
 import { macosSnapshotFlags } from '../../lib/cache-flags';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { parseDurationSeconds } from '../../lib/duration';
+import { parseTunnelHeaders } from '../../lib/tunnel-headers';
 
 export default class MacosCreate extends BaseCommand {
   static summary = 'Create a new macOS instance';
@@ -22,6 +23,7 @@ export default class MacosCreate extends BaseCommand {
     '<%= config.bin %> macos create --label env=dev --display-name review-mac --inactivity-timeout 30m',
     '<%= config.bin %> macos create --snapshot-key my-mac --snapshot-restore-keys "my-mac,base-mac"',
     '<%= config.bin %> macos create --tunnel staging',
+    "<%= config.bin %> macos create --tunnel staging --tunnel-header 'X-Run-Id: run-4812'",
     '<%= config.bin %> macos create --record --events --perf --persist-ttl 24h',
   ];
 
@@ -72,6 +74,12 @@ export default class MacosCreate extends BaseCommand {
         'Name of a private tunnel, created in the console (Network) and run with lim tunnel run, that the ' +
         'instance must attach to before it becomes ready.',
     }),
+    'tunnel-header': Flags.string({
+      description:
+        "HTTP header, as 'Name: value', that the instance adds to every inspected request it sends " +
+        'through a tunnel, next to Limrun-Instance-Id. Repeat to add more.',
+      multiple: true,
+    }),
     label: Flags.string({
       description: 'Metadata label in key=value format. Repeat to attach multiple labels.',
       multiple: true,
@@ -95,8 +103,14 @@ export default class MacosCreate extends BaseCommand {
       this.info('A reused instance keeps the permissions it was created with.');
     }
     const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events || flags.perf;
-    // Parsed before the instance is created so a bad TTL fails before billing.
+    // Parsed before the instance is created so a bad TTL or header fails before billing.
     const captureTtlSeconds = wantsCaptures ? parseDurationSeconds(flags['persist-ttl']) : 0;
+    let tunnelHeaders: Record<string, string> | undefined;
+    try {
+      tunnelHeaders = parseTunnelHeaders(flags['tunnel-header']);
+    } catch (error) {
+      this.error(error instanceof Error ? error.message : String(error));
+    }
 
     await this.withAuth(async () => {
       const labels = parseLabels(flags.label);
@@ -119,6 +133,7 @@ export default class MacosCreate extends BaseCommand {
           ...(flags['hard-timeout'] && { hardTimeout: flags['hard-timeout'] }),
           ...(flags['inactivity-timeout'] && { inactivityTimeout: flags['inactivity-timeout'] }),
           ...(flags.tunnel && { tunnel: flags.tunnel }),
+          ...(tunnelHeaders && { tunnelHeaders }),
         },
         ...(Object.keys(metadata).length > 0 && { metadata }),
       };

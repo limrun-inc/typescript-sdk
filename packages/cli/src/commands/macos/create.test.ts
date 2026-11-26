@@ -102,6 +102,28 @@ test('--tunnel names the private tunnel in the instance spec', async () => {
   );
 });
 
+test('--tunnel-header adds the headers to the instance spec', async () => {
+  const { command, create } = setup({ tunnel: 'staging', 'tunnel-header': ['X-Run-Id: run-4812'] });
+  await command.run();
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      spec: { role: { permissions: [] }, tunnel: 'staging', tunnelHeaders: { 'X-Run-Id': 'run-4812' } },
+    }),
+  );
+});
+
+test('omits tunnelHeaders without --tunnel-header', async () => {
+  const { command, create } = setup({ tunnel: 'staging' });
+  await command.run();
+  expect(create.mock.calls[0][0].spec).not.toHaveProperty('tunnelHeaders');
+});
+
+test('a malformed --tunnel-header fails before the instance is created', async () => {
+  const { command, create } = setup({ 'tunnel-header': ['X-Run-Id run-4812'] });
+  await expect(command.run()).rejects.toThrow("--tunnel-header #1 must look like 'Name: value'.");
+  expect(create).not.toHaveBeenCalled();
+});
+
 test('--reuse-if-exists asks the guest to restore, which keeps a disk that already restored', async () => {
   const { command, guest, info } = setup({ 'snapshot-key': 'my-mac', 'reuse-if-exists': true });
   guest.restoreSnapshot.mockImplementation(async ({ onProgress }) => {
