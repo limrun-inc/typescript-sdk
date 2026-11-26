@@ -5,13 +5,23 @@ jest.mock('../../lib/config', () => ({
   registerCreatedInstance: jest.fn(),
 }));
 
-function setup(flags: Record<string, unknown>, createdAt = new Date().toISOString()) {
+/**
+ * The API's clock as the create response reports it, and when the instance was created on that
+ * clock. By default the instance is created as the request arrives, with the API's clock in step.
+ */
+interface ApiTimes {
+  apiNow?: number | null;
+  createdAt?: number;
+}
+
+function setup(flags: Record<string, unknown>, { apiNow = Date.now(), createdAt }: ApiTimes = {}) {
   const instance = {
-    metadata: { id: 'macos_test', createdAt },
+    metadata: { id: 'macos_test', createdAt: new Date(createdAt ?? apiNow ?? Date.now()).toISOString() },
     spec: { region: 'us-west2' },
     status: { state: 'ready', apiUrl: 'https://macos.example/v1/macos_test', token: 't' },
   };
-  const create = jest.fn().mockResolvedValue(instance);
+  const headers = new Headers(apiNow === null ? {} : { date: new Date(apiNow).toUTCString() });
+  const create = jest.fn(() => ({ withResponse: async () => ({ data: instance, response: { headers } }) }));
   const guest = {
     restoreSnapshot: jest.fn().mockResolvedValue({ phase: 'restored', key: 'my-mac' }),
     startRecording: jest.fn().mockResolvedValue('rec-1'),
@@ -102,11 +112,11 @@ test('--tunnel names the private tunnel in the instance spec', async () => {
   );
 });
 
+const reuse = { 'snapshot-key': 'my-mac', 'reuse-if-exists': true };
+const HOUR = 60 * 60 * 1000;
+
 test('--reuse-if-exists keeps the disk of an instance that already existed', async () => {
-  const { command, guest, info } = setup(
-    { 'snapshot-key': 'my-mac', 'reuse-if-exists': true },
-    new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-  );
+  const { command, guest, info } = setup(reuse, { createdAt: Date.now() - HOUR });
   await command.run();
   expect(guest.restoreSnapshot).not.toHaveBeenCalled();
   expect(info).toHaveBeenCalledWith(
@@ -115,7 +125,26 @@ test('--reuse-if-exists keeps the disk of an instance that already existed', asy
 });
 
 test('--reuse-if-exists restores into an instance this command created', async () => {
-  const { command, guest } = setup({ 'snapshot-key': 'my-mac', 'reuse-if-exists': true });
+  const { command, guest } = setup(reuse);
   await command.run();
   expect(guest.restoreSnapshot).toHaveBeenCalledWith(expect.objectContaining({ key: 'my-mac' }));
+});
+
+test.each([
+  ['behind', -HOUR],
+  ['ahead of', HOUR],
+])('tells new from reused on the API clock when it runs an hour %s this one', async (_, offset) => {
+  const apiNow = Date.now() + offset;
+  const created = setup(reuse, { apiNow });
+  await created.command.run();
+  expect(created.guest.restoreSnapshot).toHaveBeenCalled();
+  const reused = setup(reuse, { apiNow, createdAt: apiNow - 10_000 });
+  await reused.command.run();
+  expect(reused.guest.restoreSnapshot).not.toHaveBeenCalled();
+});
+
+test('treats the instance as reused when the response carries no Date header', async () => {
+  const { command, guest } = setup(reuse, { apiNow: null });
+  await command.run();
+  expect(guest.restoreSnapshot).not.toHaveBeenCalled();
 });

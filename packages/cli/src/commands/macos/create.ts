@@ -122,8 +122,10 @@ export default class MacosCreate extends BaseCommand {
         },
         ...(Object.keys(metadata).length > 0 && { metadata }),
       };
-      const requestedAt = Date.now();
-      const instance = await this.client.macosInstances.create(params);
+      const sentAt = Date.now();
+      const { data: instance, response } = await this.client.macosInstances.create(params).withResponse();
+      // When the request reached the API, on the API's clock, so no local clock skew enters it.
+      const requestedAt = Date.parse(response.headers.get('date') ?? '') - (Date.now() - sentAt);
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
       registerCreatedInstance(instance);
 
@@ -131,6 +133,9 @@ export default class MacosCreate extends BaseCommand {
         const guest = await this.client.macosInstances.createClient({ instance, logLevel: 'none' });
         if (snapshot) {
           // A reused instance already holds its own work on disk; a restore would overwrite it.
+          // An instance another caller created moments earlier counts as new, which is safe: the
+          // guest runs one restore per instance, so a second request joins the first, and it
+          // never restores into a guest that was never asked to.
           if (flags['reuse-if-exists'] && wasCreatedBefore(instance.metadata.createdAt, requestedAt)) {
             this.info(
               `Reused macOS instance ${instance.metadata.id}; its disk is kept and no snapshot is restored.`,
@@ -168,14 +173,18 @@ export default class MacosCreate extends BaseCommand {
   }
 }
 
-/** Clock skew allowed between this machine and the API when telling a reused instance from a new one. */
-const CLOCK_SKEW_MS = 5000;
+/**
+ * The rounding allowed when comparing an instance's creation time with the request's arrival, both
+ * on the API's clock: the Date header and creation times carry whole seconds.
+ */
+const TIMESTAMP_ROUNDING_MS = 2000;
 
 /**
- * wasCreatedBefore reports whether an instance existed before this command asked for one. An
- * instance whose age can't be read is treated as reused, so a restore never overwrites a live disk.
+ * wasCreatedBefore reports whether an instance existed before this command asked for one, with
+ * both times on the API's clock. An instance whose age can't be read is treated as reused, so a
+ * restore never overwrites a live disk.
  */
 function wasCreatedBefore(createdAt: string | undefined, requestedAt: number): boolean {
   const created = createdAt ? Date.parse(createdAt) : NaN;
-  return !(created >= requestedAt - CLOCK_SKEW_MS);
+  return !(created >= requestedAt - TIMESTAMP_ROUNDING_MS);
 }
