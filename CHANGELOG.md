@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.79.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.78.1...v0.79.0) (2026-11-26)
+
+
+### Features
+
+* **cli:** --tunnel-header on ios, android and macos create ([8586708](https://github.com/limrun-inc/typescript-sdk/commit/85867085ad1bce3e5c72e4dddd6fd7706bd83634))
+* send per-instance headers through tunnels ([2285b49](https://github.com/limrun-inc/typescript-sdk/commit/2285b49c6a581d6d82e1b31ea764b82f983d31ec))
+
+
+### Chores
+
+* **cli:** release 0.64.0 with SDK 0.78.1 ([184c345](https://github.com/limrun-inc/typescript-sdk/commit/184c3452c8e310122ff05882d8586fedbe18f9d5))
+
 ## [0.78.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.78.0...v0.78.1) (2026-11-26)
 
 
