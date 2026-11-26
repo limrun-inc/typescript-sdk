@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { DUO_DIMENSIONS, type DuoButton } from '../core/duo';
+import { loadModel } from './model-source';
+import type { RemoteControlModel } from './remote-control';
 
 // Body dimensions are published by Apple; radii and hardware details follow its product photographs.
 const { width, height, depth } = DUO_DIMENSIONS;
@@ -445,9 +447,9 @@ export function createDuoModel(
       return hardware && (!surface || hardware.distance <= surface.distance) ? hardware : surface;
     },
     // Imported appearances replace the rigid body while live screens and the hinge remain under our control.
-    loadAppearance: async (url: string) => {
+    loadAppearance: async (source: RemoteControlModel) => {
       const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
-      const { scene } = await new GLTFLoader().loadAsync(url);
+      const { scene } = await loadModel(new GLTFLoader(), source);
       const importedResources = new Set<{ dispose(): void }>();
       scene.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;

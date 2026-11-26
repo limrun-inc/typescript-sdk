@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
+import type { RemoteControlModel } from './remote-control';
+import { createStudioEnvironment } from './studio-environment';
 import { duoFoldAngle } from './duo-fold-timing';
 import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
 import { DuoControls, DuoHardwareIcon } from './duo-controls';
@@ -17,7 +19,8 @@ import {
 
 export interface DuoFrameProps {
   watchOnly?: boolean;
-  modelUrl?: string;
+  /** The prepared Duo appearance to draw over the built-in body. */
+  model?: RemoteControlModel;
   outer: HTMLVideoElement | null;
   inner: HTMLVideoElement | null;
   state: DuoState;
@@ -27,6 +30,8 @@ export interface DuoFrameProps {
   touch: (action: number, screenId: number, x: number, y: number) => void;
   onKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
   onKeyUp: React.KeyboardEventHandler<HTMLDivElement>;
+  /** The appearance has loaded, or failed to and left the built-in body, or there is none to load. */
+  onReady?: () => void;
 }
 
 type View = 'front' | 'book' | 'table' | 'back';
@@ -66,6 +71,7 @@ export default function DuoFrame(props: DuoFrameProps) {
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch {
       setError('3D rendering is unavailable in this browser. Enable WebGL to use the folding frame.');
+      latest.current.onReady?.();
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -79,36 +85,9 @@ export default function DuoFrame(props: DuoFrameProps) {
     let aspect = 1;
     camera.position.set(0, 0, 340);
     const root = new THREE.Group();
-    // Continuous light-to-dark studio sweeps give broad metal faces reflections at every viewing angle.
-    const studioWidth = 512;
-    const studioHeight = 256;
-    const studioPixels = new Float32Array(studioWidth * studioHeight * 4);
-    for (let y = 0; y < studioHeight; y++) {
-      const latitude = ((y + 0.5) / studioHeight - 0.5) * Math.PI;
-      for (let x = 0; x < studioWidth; x++) {
-        const longitude = ((x + 0.5) / studioWidth) * Math.PI * 2;
-        const sweep = Math.pow(0.5 + 0.5 * Math.sin(4 * longitude + 1.8 * Math.sin(latitude)), 3);
-        const fill = Math.pow(0.5 + 0.5 * Math.cos(2 * longitude - 3 * latitude), 3);
-        const light = 0.12 + 3.2 * sweep + 0.8 * fill;
-        const offset = (y * studioWidth + x) * 4;
-        studioPixels.set([light, light, light, 1], offset);
-      }
-    }
-    const studio = new THREE.DataTexture(
-      studioPixels,
-      studioWidth,
-      studioHeight,
-      THREE.RGBAFormat,
-      THREE.FloatType,
-    );
-    studio.mapping = THREE.EquirectangularReflectionMapping;
-    studio.needsUpdate = true;
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const environmentMap = pmrem.fromEquirectangular(studio);
+    const environmentMap = createStudioEnvironment(renderer);
     scene.environment = environmentMap.texture;
     scene.environmentIntensity = 0.4;
-    studio.dispose();
-    pmrem.dispose();
     scene.add(new THREE.HemisphereLight(0xffffff, 0xc1c8d1, 1.1));
     const key = new THREE.DirectionalLight(0xffffff, 2.4);
     key.position.set(-100, 180, 260);
@@ -124,13 +103,21 @@ export default function DuoFrame(props: DuoFrameProps) {
       texture.magFilter = THREE.LinearFilter;
     }
 
+    let disposed = false;
     const model = createDuoModel(outerTexture, innerTexture, environmentMap.texture);
     const { device } = model;
-    if (props.modelUrl)
+    // A load that outlives this effect, for a frame since rebuilt or gone, reports nothing.
+    if (props.model)
       void model
-        .loadAppearance(props.modelUrl)
+        .loadAppearance(props.model)
         .then(() => invalidate())
-        .catch((reason) => setError(String(reason)));
+        .catch((reason) => {
+          if (!disposed) setError(String(reason));
+        })
+        .finally(() => {
+          if (!disposed) latest.current.onReady?.();
+        });
+    else latest.current.onReady?.();
     const buttons = new DuoButtonSender(
       (button, down) => latest.current.button(button, down),
       (reason) => setError(String(reason)),
@@ -162,7 +149,6 @@ export default function DuoFrame(props: DuoFrameProps) {
     let renderedYaw = 0;
     let animation = 0;
     let visible = true;
-    let disposed = false;
     const invalidate = () => {
       if (!animation && visible && !document.hidden && !disposed) animation = requestAnimationFrame(animate);
     };
@@ -478,7 +464,7 @@ export default function DuoFrame(props: DuoFrameProps) {
       environmentMap.dispose();
       renderer.domElement.remove();
     };
-  }, [props.outer, props.inner, props.modelUrl]);
+  }, [props.outer, props.inner, props.model]);
 
   return (
     <div className="rc-duo">

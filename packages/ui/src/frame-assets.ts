@@ -13,6 +13,10 @@ import pixelTabletFrame from './assets/pixel_tablet_portrait.webp';
 import pixelTabletFrameLandscape from './assets/pixel_tablet_landscape.webp';
 import appleLogo from './assets/Apple_logo_white.svg';
 import androidBootLogo from './assets/android_boot.webp';
+// Rendered by scripts/render-macbook-frame.ts from "macbook pro M3 16 inch 2024" by jackbaeten,
+// CC BY 4.0 (https://sketchfab.com/3d-models/8e34fc2b303144f78490007d91ff57c4), with its
+// wallpaper removed.
+import macbookFrame from './assets/macbook_pro_frame.webp';
 
 export const defaultRemoteControlAssets: RemoteControlAssets = {
   ios: {
@@ -23,6 +27,7 @@ export const defaultRemoteControlAssets: RemoteControlAssets = {
       'iphone-17e': { frame: iphone17eFrame, frameLandscape: iphone17eFrameLandscape },
     },
     loadingLogo: appleLogo,
+    model: () => import('./duo-model').then((module) => module.default),
   },
   android: {
     frame: pixelFrame,
@@ -30,5 +35,11 @@ export const defaultRemoteControlAssets: RemoteControlAssets = {
     tabletFrame: pixelTabletFrame,
     tabletFrameLandscape: pixelTabletFrameLandscape,
     loadingLogo: androidBootLogo,
+  },
+  macos: {
+    frame: macbookFrame,
+    // The render's screen opening and its notch's share, which render-macbook-frame.ts reports.
+    screen: { left: 0.131975, top: 0.023286, width: 0.735994, height: 0.632334, notch: 0.033124 },
+    model: () => import('./macbook-model').then((module) => module.default),
   },
 };

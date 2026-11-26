@@ -10,11 +10,33 @@ See [examples](../../examples/) to see how it can be used.
 
 `@limrun/ui` bundles Limrun's device frames and boot logos as inline images, about
 600 KB. Embeds that render the bare screen can import `@limrun/ui/lite` instead: the same
-`RemoteControl` API without any artwork, so `showFrame` has nothing to draw and the boot
+`RemoteControl` API without any artwork, so `showFrame` has no phone frame to draw and the boot
 logo is omitted. Pass your own images through the `assets` prop if you want frames back.
 
 `onConnectionStateChange` reports `connecting`, `connected`, `reconnecting`, `failed`, and
 `terminated` so a host can show status text without tracking the retry logic.
+
+## MacBook frame
+
+A macOS guest streams inside a MacBook Pro. The default entry draws it with an image rendered from a
+3D model, with the stream in the screen's opening; `@limrun/ui/lite` draws a plainer one in CSS.
+Neither draws it when `showFrame` is false.
+
+A 2D and 3D switch above the MacBook turns it into a 3D model, like the iPhone Duo's, with the
+stream on its screen. The 3D MacBook opens its lid when it appears; set `animateLid={false}` to show
+it open from the start. The default entry bundles the 3D model, about 1.5 MB, in a chunk of its own.
+Your bundler splits it out with three.js, and a browser downloads them only when a viewer picks 3D,
+so the 2D stream's first frame never waits for them. The lite entry has no model and draws a
+simpler built-in MacBook in 3D.
+
+To serve the model yourself, or another prepared one, pass its URL as `macbookModelUrl`.
+`scripts/prepare-macbook-model.mjs` makes one from the source model and lists the nodes the 3D
+MacBook expects, and `scripts/render-macbook-frame.ts` renders the 2D image from it.
+
+The MacBook Pro image and model come from
+[macbook pro M3 16 inch 2024](https://sketchfab.com/3d-models/8e34fc2b303144f78490007d91ff57c4) by
+jackbaeten, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Its wallpaper
+and lettering are removed, its lid is posed on its hinge, and its textures and meshes are compressed.
 
 ## Reconnecting
 
@@ -139,7 +161,7 @@ This package is not part of generated SDK, hence you need to publish it manually
 `RemoteControl` discovers native Duo support and starts in 2D with native video
 inside a silver Duo frame, including its hinge spine and physical buttons.
 Both modes share the fold, hinge-angle and rotation toolbar. No model prop is required. Select **3D**
-to load the interactive frame and its model on demand. Returning to **2D** releases
+to load the interactive frame and its bundled model on demand. Returning to **2D** releases
 the renderer and its graphics resources without reconnecting the simulator.
 
 ```tsx
@@ -180,14 +202,20 @@ accessibility inspection and the existing recording API do not follow the
 inner display. Use `screenshotDisplay` and `tapDisplay` from the TypeScript
 iOS client for explicit display automation.
 
-### Optional Duo appearance
+### Duo appearance
 
-`duoModelUrl` replaces the rigid body with a host-supplied GLB. The host provides
-and licenses the asset; no third-party model is bundled with this package.
-Live simulator screens, hinge control and input remain active. A failed load keeps
-the built-in frame available and reports the error.
+The default entry bundles a Star White Duo appearance, about 1.4 MB, in a chunk of its own. A browser
+downloads it only when a viewer picks 3D, so the 2D stream never waits for it. The lite entry has
+no appearance and draws the built-in body. Live simulator screens, hinge control and input work
+either way, and a failed load keeps the built-in body and reports the error.
 
-The prepared model must contain `folding-half` and `stationary-half` groups with
+The original model and textures are by Apple, and Apple and the respective owners retain their
+rights. The conversion and folding geometry come from
+[jal-co/iphone-duo](https://github.com/jal-co/iphone-duo/blob/3674f3343d20a72fd6c7277bdd5cfeffc9216f7d/THIRD_PARTY.md)
+at commit `3674f33`, whose MIT code license does not cover the asset. Limrun optimized the
+geometry, removed embedded textures, adjusted materials and added screen and button metadata.
+
+`duoModelUrl` replaces the bundled appearance with a GLB you serve. The prepared model must contain `folding-half` and `stationary-half` groups with
 flat mesh children measured in centimeters. Inner display surfaces lie in the
 XY plane, centered at the hinge with positive Z facing the inner display.
 Material names `inner-screen` and `cover-screen` identify surfaces replaced by live

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Render the MacBook frame</title>
+    <style>
+      body {
+        margin: 16px;
+        font: 13px system-ui;
+        background: repeating-conic-gradient(#ddd 0 25%, #fff 0 50%) 0 0 / 24px 24px;
+      }
+      canvas {
+        display: block;
+        max-width: 100%;
+        margin: 12px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <pre id="status">Rendering…</pre>
+    <script type="module" src="./render-macbook-frame.ts"></script>
+  </body>
+</html>

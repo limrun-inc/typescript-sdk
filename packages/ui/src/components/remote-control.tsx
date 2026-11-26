@@ -1,5 +1,6 @@
 import { createDeviceStream, type DeviceStream } from '../core/device-stream';
 import { detectPlatform, debugLog, debugWarn, safeInvoke, type DevicePlatform } from '../core/stream-utils';
+import { MACBOOK, MACBOOK_EXTRA_HEIGHT, MACBOOK_SCREEN_RAISE, MACBOOK_WIDTH } from './macbook-geometry';
 import type {
   ScreenshotData,
   ImperativeKeyboardEvent,
@@ -24,9 +25,13 @@ import './remote-control.css';
 
 import { type DuoState, type DuoOrientation } from '../core/duo';
 const DuoView = lazy(() => import('./duo-view'));
+// three.js loads only when a viewer picks the 3D MacBook.
+const MacbookFrame = lazy(() => import('./macbook-frame'));
 
 import { ANDROID_KEYS, AMOTION_EVENT, MAC_INPUT_ACTION, codeMap } from '../core/constants';
 import { macKeyCodeFor } from '../core/mac-keys';
+import { MacPointer, type MacTouchScreen, type MacTouchType } from '../core/mac-pointer';
+import { DeviceModeToggle, useDeviceView } from './device-view';
 import type { PlaybackStats } from '../core/playback-stats';
 
 import {
@@ -34,9 +39,7 @@ import {
   createInjectKeycodeMessage,
   createSetClipboardMessage,
   createTwoFingerTouchControlMessage,
-  createMouseControlMessage,
   createMacKeyMessage,
-  createMacScrollMessage,
 } from '../core/webrtc-messages';
 import { type AxStatus, type AndroidElementTreeOptions } from '../core/ax-fetcher';
 import { AxElement, AxSnapshot, axElementAtPoint, axSnapshotsEqual } from '../core/ax-tree';
@@ -86,13 +89,30 @@ export interface RemoteControlProps {
   showFrame?: boolean;
 
   /**
+   * Opens a macOS guest's MacBook's lid, with the stream on its screen, each time the 3D MacBook
+   * appears. Defaults to true. It never plays for a viewer who prefers reduced motion, and other
+   * platforms and the 2D frame ignore it.
+   */
+  animateLid?: boolean;
+
+  /**
    * The iOS model behind the stream. iphone-duo enables the official iPhone Duo's native displays and
    * interactive folding frame; iphone-se and iphone-17e pick their own device frames.
    */
   deviceModel?: RemoteControlDeviceModel;
 
-  /** Optional prepared Duo GLB, supplied and licensed by the host application. */
+  /**
+   * A prepared iPhone Duo GLB for the 3D Duo, in place of the one the default entry bundles.
+   * Without either, as with the lite entry, a simpler built-in Duo is drawn.
+   */
   duoModelUrl?: string;
+
+  /**
+   * A prepared MacBook GLB for a macOS guest's 3D MacBook, in place of the one the default entry
+   * bundles. scripts/prepare-macbook-model.mjs makes one. Without either, as with the lite entry,
+   * a simpler built-in MacBook is drawn.
+   */
+  macbookModelUrl?: string;
 
   // When true, drops after a working session auto-reconnect instead of
   // surfacing the manual "Retry" button. Defaults to true.
@@ -338,8 +358,27 @@ export type RemoteControlPlatformAssets = {
   tabletFrameLandscape?: string;
   /** Frames of iOS models whose shape differs from the default iPhone. A model without one streams frameless. */
   modelFrames?: Partial<Record<FramedIOSModel, { frame: string; frameLandscape: string }>>;
+  /**
+   * Where a macOS frame image's screen opening sits, as fractions of the image's width and height
+   * from its top left. A macOS `frame` needs it; without both, the MacBook is drawn in CSS. `notch`
+   * is the share of the opening's height a notch takes at its top: the stream sits below it, and
+   * the strip either side of the notch shows the stream's top row, as if its menu bar reached up.
+   */
+  screen?: { left: number; top: number; width: number; height: number; notch?: number };
+  /**
+   * The prepared GLB the platform's 3D device draws: the iPhone Duo for iOS, and the MacBook for
+   * macOS, whose nodes scripts/prepare-macbook-model.mjs describes. The default entry's load only
+   * when the 3D view appears.
+   */
+  model?: RemoteControlModel;
   loadingLogo?: string;
 };
+
+/**
+ * A prepared 3D model, as a URL or a function that resolves to one when the 3D view first needs it.
+ * A function keeps a large model out of the page until then; pass the same function each render.
+ */
+export type RemoteControlModel = string | (() => Promise<string>);
 
 export type RemoteControlAssets = Partial<Record<DevicePlatform, RemoteControlPlatformAssets>>;
 
@@ -387,7 +426,8 @@ const deviceConfig: Record<DevicePlatform, DeviceConfig> = {
       landscape: { widthMultiplier: 0.962 },
     },
   },
-  // A macOS virtual machine is a desktop display: no device frame around it.
+  // A macOS virtual machine is a desktop display. Its MacBook Pro frame is drawn in CSS around
+  // whatever size the guest display has; see MACBOOK below.
   macos: {
     videoBorderRadiusMultiplier: 0,
     loadingLogoSize: '10%',
@@ -422,6 +462,11 @@ const iosModelConfig: Record<FramedIOSModel, DeviceConfig> = {
     },
   },
 };
+
+// A guest that has not sent video yet is laid out at this shape.
+const MACBOOK_PLACEHOLDER_ASPECT = 16 / 10;
+// Room above the MacBook for its 2D and 3D switch, which would otherwise cover the guest's menu bar.
+const MACBOOK_TOOLBAR_SPACE = 44;
 
 // The tablet artwork has a 1600 × 2560 screen opening in an 1837 × 2798 frame.
 // Phone insets enlarge the video behind its wider bezel and hide the screen edges.
@@ -479,8 +524,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       openUrl,
       watchOnly: requestedWatchOnly = false,
       showFrame = true,
+      animateLid = true,
       deviceModel,
       duoModelUrl,
+      macbookModelUrl,
       autoReconnect,
       jitterBufferTargetMs,
       onPlaybackStats,
@@ -525,6 +572,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const [useAndroidTabletFrame, setUseAndroidTabletFrame] = useState(false);
     const [videoStyle, setVideoStyle] = useState<React.CSSProperties>({});
     const [homeButtonStyle, setHomeButtonStyle] = useState<React.CSSProperties | null>(null);
+    const [macbookStyle, setMacbookStyle] = useState<React.CSSProperties | null>(null);
+    // The strip either side of the 2D MacBook's notch, above the stream.
+    const [macbookBandStyle, setMacbookBandStyle] = useState<React.CSSProperties | null>(null);
+    const macbookBandRef = useRef<HTMLCanvasElement>(null);
+    // The black glass of the 2D MacBook's screen, behind the stream, where a stream of another shape
+    // leaves bars.
+    const [macbookScreenStyle, setMacbookScreenStyle] = useState<React.CSSProperties | null>(null);
+    // The stream's aspect ratio, which the 3D MacBook's built-in model takes for its screen.
+    const [macbookAspect, setMacbookAspect] = useState<number | null>(null);
+    // The MacBook's 2D and 3D choice. As the 3D MacBook takes over, the 2D view lets go of the guest's
+    // pointer, since it stops taking input.
+    const macbookView = useDeviceView(() => macPointerRef.current?.release());
+    const macbook3dRef = useRef(false);
     const lastVideoSize = useRef<{ width: number; height: number } | null>(null);
     // Map to track active pointers for real touch/mouse single-finger events.
     // Key: pointerId (-1 for mouse, touch.identifier for touch), Value: { x: number, y: number }
@@ -637,7 +697,60 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     const loadingLogo = platformAssets?.loadingLogo;
     // Without a frame image (the lite entry) the video lays out frameless
     // whatever showFrame says.
-    const frameVisible = !isDuo && showFrame && !!frameImageSrc;
+    // A macOS frame is a MacBook, laid out around its own screen opening below.
+    const frameVisible = !isDuo && platform !== 'macos' && showFrame && !!frameImageSrc;
+    const macbookVisible = platform === 'macos' && showFrame;
+    // The MacBook is an image rendered from a 3D model when the assets carry one, as the default
+    // entry's do, and drawn in CSS otherwise, as for the lite entry.
+    const macbookImage =
+      macbookVisible && platformAssets?.frame && platformAssets.screen ?
+        { src: platformAssets.frame, screen: platformAssets.screen }
+      : undefined;
+    const macbookImageRef = useRef<HTMLImageElement>(null);
+    // The viewer picked 3D, so the 3D MacBook loads; and it is on screen, taking input. Until it is,
+    // the 2D one stays and takes input.
+    const macbook3d = macbookVisible && macbookView.mode === '3d';
+    const macbook3dShown = macbookVisible && macbookView.shown === '3d';
+    macbook3dRef.current = macbook3dShown;
+    // A MacBook that goes away, with the frame turned off, comes back in 2D.
+    const chooseMacbookView = macbookView.choose;
+    useEffect(() => {
+      if (!macbookVisible) chooseMacbookView('2d');
+    }, [macbookVisible, chooseMacbookView]);
+
+    // The strip beside the 2D MacBook's notch shows the stream's top row, the guest's menu bar,
+    // copied in with each new frame of the stream.
+    const macbookBandVisible = !!macbookImage && !macbook3dShown && !!macbookBandStyle;
+    useEffect(() => {
+      const video = videoRef.current;
+      const band = macbookBandRef.current;
+      const context = band?.getContext('2d');
+      if (!macbookBandVisible || !video || !band || !context) return;
+      const draw = () => {
+        if (!video.videoWidth) return;
+        if (band.width !== video.videoWidth) band.width = video.videoWidth;
+        try {
+          context.drawImage(video, 0, 0, video.videoWidth, 1, 0, 0, band.width, 1);
+        } catch {
+          // A frame the browser cannot read yet leaves the strip as it was.
+        }
+      };
+      let stopped = false;
+      let callback: number | undefined;
+      const frame = () => {
+        if (stopped) return;
+        draw();
+        callback = video.requestVideoFrameCallback(frame);
+      };
+      const timer = 'requestVideoFrameCallback' in video ? undefined : window.setInterval(draw, 1000 / 30);
+      if (timer === undefined) callback = video.requestVideoFrameCallback(frame);
+      draw();
+      return () => {
+        stopped = true;
+        if (callback !== undefined) video.cancelVideoFrameCallback(callback);
+        window.clearInterval(timer);
+      };
+    }, [macbookBandVisible]);
 
     const clientRef = useRef<DeviceStream | null>(null);
     const sendBinaryControlMessage = (data: ArrayBuffer) => clientRef.current?.sendControl(data);
@@ -646,6 +759,19 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // (focus moved away, Cmd+Tab, the tab hidden) is released here, or the
     // guest keeps it held and later clicks and keys run as a shortcut.
     const heldMacKeysRef = useRef(new Set<number>());
+    // A macOS guest's pointer, which the 2D view and the 3D MacBook both send through. Select mode
+    // blocks it, as it blocks every device's input.
+    const inputBlockedRef = useRef(false);
+    inputBlockedRef.current = inspectMode === true;
+    const macPointerRef = useRef<MacPointer | null>(null);
+    if (!macPointerRef.current) {
+      macPointerRef.current = new MacPointer(
+        (data) => clientRef.current?.sendControl(data),
+        () => inputBlockedRef.current,
+      );
+    }
+    const macPointer = macPointerRef.current;
+    useEffect(() => () => macPointer.release(), [macPointer]);
     const releaseHeldMacKeys = useCallback(() => {
       for (const keyCode of heldMacKeysRef.current) {
         clientRef.current?.sendControl(createMacKeyMessage(MAC_INPUT_ACTION.UP, keyCode));
@@ -1135,9 +1261,34 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       return axElementAtPoint(snapshot, axX, axY);
     };
 
+    // Where a touch screen's fingers land on a macOS guest's screen.
+    const macTouchScreen = (ctx: VideoMappingContext): MacTouchScreen => ({
+      map: (x, y) => {
+        const geometry = mapClientPointToVideo(ctx, x, y);
+        if (!geometry) return undefined;
+        return {
+          x: geometry.videoX,
+          y: geometry.videoY,
+          width: geometry.videoWidth,
+          height: geometry.videoHeight,
+        };
+      },
+      // A finger on the frame, or a letterbox bar, is not on the guest's screen.
+      contains: (x, y) => {
+        const relativeX = x - ctx.videoRect.left - ctx.offsetX;
+        const relativeY = y - ctx.videoRect.top - ctx.offsetY;
+        return (
+          relativeX >= 0 && relativeX <= ctx.actualWidth && relativeY >= 0 && relativeY <= ctx.actualHeight
+        );
+      },
+      scale: ctx.actualWidth > 0 ? ctx.videoWidth / ctx.actualWidth : 1,
+    });
+
     // Unified handler for both mouse and touch interactions
     const handleInteraction = (event: React.MouseEvent | React.TouchEvent) => {
-      if (isDuo) return;
+      // The Duo and the 3D MacBook take their own input, and their controls, such as a slider,
+      // need the browser's default handling.
+      if (isDuo || macbook3dRef.current) return;
       event.preventDefault();
       event.stopPropagation();
 
@@ -1177,7 +1328,14 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // A macOS guest takes a desktop pointer: hover moves, every button, and no
       // touch emulation or Alt two-finger gestures.
       if (platform === 'macos') {
-        if ('touches' in event || !ctx || !clientRef.current?.getState().controlReady) return;
+        if (!ctx || !clientRef.current?.getState().controlReady) return;
+        if ('touches' in event) {
+          const touches = Array.from(event.touches, (touch) => ({ x: touch.clientX, y: touch.clientY }));
+          if (macPointer.touch(event.type as MacTouchType, touches, macTouchScreen(ctx))) {
+            videoRef.current?.focus();
+          }
+          return;
+        }
         const geometry = mapClientPointToVideo(ctx, event.clientX, event.clientY);
         if (!geometry) return;
         const action =
@@ -1187,15 +1345,15 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         // Leaving the view releases every button, so none stays held in the guest.
         const buttons = event.type === 'mouseleave' ? 0 : event.buttons;
         if (event.type === 'mousedown') videoRef.current?.focus();
-        sendBinaryControlMessage(
-          createMouseControlMessage(
-            action,
-            geometry.videoWidth,
-            geometry.videoHeight,
-            geometry.videoX,
-            geometry.videoY,
-            buttons,
-          ),
+        macPointer.pointer(
+          action,
+          {
+            x: geometry.videoX,
+            y: geometry.videoY,
+            width: geometry.videoWidth,
+            height: geometry.videoHeight,
+          },
+          buttons,
         );
         return;
       }
@@ -1475,6 +1633,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       if (event.ctrlKey) return;
       // A macOS guest scrolls natively; no synthesized finger drag.
       if (platform === 'macos') {
+        if (macbook3dRef.current) return;
         const ctx = computeVideoMappingContext();
         if (!ctx) return;
         const relativeX = event.clientX - ctx.videoRect.left - ctx.offsetX;
@@ -1489,15 +1648,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16
           : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? ctx.actualHeight
           : 1;
-        sendBinaryControlMessage(
-          createMacScrollMessage(
-            point.videoWidth,
-            point.videoHeight,
-            point.videoX,
-            point.videoY,
-            event.deltaX * scale,
-            event.deltaY * scale,
-          ),
+        macPointer.scroll(
+          { x: point.videoX, y: point.videoY, width: point.videoWidth, height: point.videoHeight },
+          event.deltaX * scale,
+          event.deltaY * scale,
         );
         return;
       }
@@ -1645,7 +1799,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       event.stopPropagation();
       const inputFocused =
         document.activeElement === videoRef.current ||
-        (isDuo && document.activeElement === event.currentTarget);
+        ((isDuo || macbook3dRef.current) && document.activeElement === event.currentTarget);
       // Use the wrapper for conditional logging
       debugLog('Keyboard event:', {
         type: event.type,
@@ -1933,12 +2087,121 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         setVideoStyle((current) => (sameStyle(current, next) ? current : next));
       const updateHomeButtonStyle = (next: React.CSSProperties | null) =>
         setHomeButtonStyle((current) => (current && next && sameStyle(current, next) ? current : next));
+      const updateMacbookStyle = (next: React.CSSProperties | null) =>
+        setMacbookStyle((current) => (current && next && sameStyle(current, next) ? current : next));
 
       const updateVideoPosition = () => {
         const hasVideoSize = video.videoWidth > 0 && video.videoHeight > 0;
         if (hasVideoSize) lastVideoSize.current = { width: video.videoWidth, height: video.videoHeight };
         const size = lastVideoSize.current;
         const aspectRatio = size ? `${size.width} / ${size.height}` : undefined;
+        // The MacBook takes the stream's shape, so the largest screen whose frame fits the container
+        // sets both the video's size and the frame's.
+        const macbookFrame = macbookImageRef.current;
+        if (macbookImage && container) {
+          // The 3D MacBook takes the stream's shape whether or not the 2D image has loaded.
+          setMacbookAspect(size ? size.width / size.height : MACBOOK_PLACEHOLDER_ASPECT);
+          if (!macbookFrame?.naturalWidth) return;
+          // The image keeps its shape, and the stream keeps its own inside the image's opening,
+          // with black bars where the two differ.
+          const imageAspect = macbookFrame.naturalWidth / macbookFrame.naturalHeight;
+          const roomHeight = container.clientHeight - MACBOOK_TOOLBAR_SPACE;
+          const frameWidth =
+            container.clientHeight > 0 ?
+              Math.min(container.clientWidth, roomHeight * imageAspect)
+            : container.clientWidth;
+          if (frameWidth <= 0) return;
+          const frameHeight = frameWidth / imageAspect;
+          const shift = container.clientHeight > 0 ? MACBOOK_TOOLBAR_SPACE / 2 : 0;
+          const { screen } = macbookImage;
+          const notch = screen.notch ?? 0;
+          // The opening, and the area below its notch, in pixels from the frame's top left.
+          const openingLeft = screen.left * frameWidth;
+          const openingTop = screen.top * frameHeight;
+          const openingWidth = screen.width * frameWidth;
+          const areaTop = openingTop + notch * screen.height * frameHeight;
+          const areaHeight = (1 - notch) * screen.height * frameHeight;
+          // The stream keeps its shape in the area: right under the notch, so the strip beside the
+          // notch meets its menu bar, or centered on a screen without one.
+          const streamAspect = size ? size.width / size.height : MACBOOK_PLACEHOLDER_ASPECT;
+          const streamWidth = Math.min(openingWidth, areaHeight * streamAspect);
+          const streamHeight = streamWidth / streamAspect;
+          const streamLeft = openingLeft + (openingWidth - streamWidth) / 2;
+          const streamTop = notch > 0 ? areaTop : areaTop + (areaHeight - streamHeight) / 2;
+          // Offsets from the container's center, which the frame sits on, shifted below the switch.
+          const offset = (left: number, top: number, width: number, height: number) =>
+            `translate(calc(-50% + ${left + width / 2 - frameWidth / 2}px), calc(-50% + ${
+              top + height / 2 - frameHeight / 2 + shift
+            }px))`;
+          updateVideoStyle({
+            width: `${streamWidth}px`,
+            height: `${streamHeight}px`,
+            transform: offset(streamLeft, streamTop, streamWidth, streamHeight),
+          });
+          const bandHeight = streamTop - openingTop;
+          setMacbookBandStyle((current) => {
+            const next =
+              notch > 0 && bandHeight > 0 ?
+                {
+                  width: `${streamWidth}px`,
+                  // A pixel under the stream's edge, so no seam shows between them.
+                  height: `${bandHeight + 1}px`,
+                  transform: offset(streamLeft, openingTop, streamWidth, bandHeight + 1),
+                }
+              : null;
+            return current && next && sameStyle(current, next) ? current : next;
+          });
+          const screenHeight = screen.height * frameHeight;
+          setMacbookScreenStyle((current) => {
+            const next = {
+              width: `${openingWidth}px`,
+              height: `${screenHeight}px`,
+              transform: offset(openingLeft, openingTop, openingWidth, screenHeight),
+            };
+            return current && sameStyle(current, next) ? current : next;
+          });
+          updateMacbookStyle({
+            width: `${frameWidth}px`,
+            height: `${frameHeight}px`,
+            transform: shift ? `translateY(${shift}px)` : undefined,
+          });
+          updateHomeButtonStyle(null);
+          recomputeOverlayGeometry();
+          return;
+        }
+        if (macbookVisible && container) {
+          const aspect = size ? size.width / size.height : MACBOOK_PLACEHOLDER_ASPECT;
+          const fitWidth = (container.clientWidth * 100) / MACBOOK_WIDTH;
+          const roomHeight = container.clientHeight - MACBOOK_TOOLBAR_SPACE;
+          const fitHeight = roomHeight / (1 / aspect + MACBOOK_EXTRA_HEIGHT / 100);
+          // A container whose height follows its content puts no limit on the height.
+          const screenWidth = container.clientHeight > 0 ? Math.min(fitWidth, fitHeight) : fitWidth;
+          if (screenWidth <= 0) return;
+          const unit = screenWidth / 100;
+          const screenHeight = screenWidth / aspect;
+          // The frame sits centered in the room below the switch.
+          const shift = container.clientHeight > 0 ? MACBOOK_TOOLBAR_SPACE / 2 : 0;
+          const radius = `${unit * MACBOOK.screenRadius}px`;
+          updateVideoStyle({
+            aspectRatio: `${aspect}`,
+            width: `${screenWidth}px`,
+            height: `${screenHeight}px`,
+            borderRadius: `${radius} ${radius} 0 0`,
+            transform: `translate(-50%, calc(-50% - ${unit * MACBOOK_SCREEN_RAISE - shift}px))`,
+          });
+          updateMacbookStyle({
+            width: `${unit * MACBOOK_WIDTH}px`,
+            height: `${screenHeight + unit * MACBOOK_EXTRA_HEIGHT}px`,
+            transform: shift ? `translateY(${shift}px)` : undefined,
+            ['--rc-macbook-unit' as string]: `${unit}px`,
+          });
+          setMacbookAspect(aspect);
+          updateHomeButtonStyle(null);
+          recomputeOverlayGeometry();
+          return;
+        }
+        updateMacbookStyle(null);
+
         // If no frame, just refresh overlay geometry; no inset/letterbox math
         // is needed since the video element is its own size.
         if (!frameVisible || !frame) {
@@ -2013,6 +2276,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
 
       // Also update when the frame image loads
       if (frame) frame.addEventListener('load', updateVideoPosition);
+      const macbookFrameImage = macbookImageRef.current;
+      macbookFrameImage?.addEventListener('load', updateVideoPosition);
 
       // Update when video metadata loads (to get correct intrinsic dimensions)
       video.addEventListener('loadedmetadata', updateVideoPosition);
@@ -2037,8 +2302,10 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         video.removeEventListener('resize', updateVideoPosition);
         video.removeEventListener('resize', bumpOnResize);
         if (frame) frame.removeEventListener('load', updateVideoPosition);
+        macbookFrameImage?.removeEventListener('load', updateVideoPosition);
       };
-    }, [config, frameVisible, url, deviceModel]);
+      // The 2D MacBook's image comes back with the 2D view, and its load must lay it out again.
+    }, [config, frameVisible, macbookVisible, macbookImage?.src, macbook3dShown, url, deviceModel]);
 
     // Reset overlay selection when inspection is disabled; place the overlay when it starts.
     useEffect(() => {
@@ -2177,6 +2444,31 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             draggable={false}
           />
         )}
+        {macbookImage && !macbook3dShown && macbookScreenStyle && (
+          <div className="rc-macbook-screen" style={macbookScreenStyle} aria-hidden="true" />
+        )}
+        {macbookImage && !macbook3dShown && macbookBandStyle && (
+          <canvas ref={macbookBandRef} className="rc-macbook-band" style={macbookBandStyle} height={1} />
+        )}
+        {macbookImage && !macbook3dShown && (
+          <img
+            ref={macbookImageRef}
+            src={macbookImage.src}
+            alt=""
+            className="rc-macbook-image"
+            // Its layout needs its size, so it is in the page, unseen, until it has loaded.
+            style={macbookStyle ?? { visibility: 'hidden' }}
+            draggable={false}
+          />
+        )}
+        {macbookVisible && !macbookImage && macbookStyle && !macbook3dShown && (
+          <div className="rc-macbook" style={macbookStyle} aria-hidden="true">
+            <div className="rc-macbook-lid">
+              <div className="rc-macbook-camera" />
+            </div>
+            <div className="rc-macbook-base" />
+          </div>
+        )}
         {frameVisible && homeButtonStyle && !watchOnly && (
           <button
             type="button"
@@ -2207,14 +2499,16 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           ref={videoRef}
           className={[
             'rc-video',
-            !frameVisible && 'rc-video-frameless',
+            !frameVisible && !macbookVisible && 'rc-video-frameless',
             !videoLoaded && (platform === 'macos' ? 'rc-video-loading-desktop' : 'rc-video-loading'),
           ]
             .filter(Boolean)
             .join(' ')}
           style={{
             ...videoStyle,
-            ...(isDuo ? { opacity: 0, width: 1, height: 1, pointerEvents: 'none' as const } : {}),
+            ...(isDuo || macbook3dShown ?
+              { opacity: 0, width: 1, height: 1, pointerEvents: 'none' as const }
+            : {}),
             ...(loadingLogo ?
               {
                 backgroundImage: `url("${loadingLogo}")`,
@@ -2227,7 +2521,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           autoPlay
           playsInline
           muted
-          tabIndex={isDuo ? -1 : 0}
+          tabIndex={isDuo || macbook3dShown ? -1 : 0}
           onKeyDown={handleKeyboard}
           onKeyUp={handleKeyboard}
           onClick={handleVideoClick}
@@ -2243,6 +2537,52 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             releaseHeldMacKeys();
           }}
         />
+        {macbook3d && macbookAspect && (
+          <Suspense fallback={null}>
+            <MacbookFrame
+              video={videoRef.current}
+              aspect={macbookAspect}
+              model={macbookModelUrl ?? platformAssets?.model}
+              animateLid={animateLid}
+              watchOnly={watchOnly}
+              onReady={macbookView.onReady}
+              pointer={(action, x, y, buttons) => {
+                const video = videoRef.current;
+                if (!video?.videoWidth || !clientRef.current?.getState().controlReady) return;
+                macPointer.pointer(
+                  action === 'down' ? MAC_INPUT_ACTION.DOWN
+                  : action === 'up' ? MAC_INPUT_ACTION.UP
+                  : MAC_INPUT_ACTION.MOVE,
+                  {
+                    x: x * video.videoWidth,
+                    y: y * video.videoHeight,
+                    width: video.videoWidth,
+                    height: video.videoHeight,
+                  },
+                  buttons,
+                );
+              }}
+              scroll={(x, y, deltaX, deltaY) => {
+                const video = videoRef.current;
+                if (!video?.videoWidth || !clientRef.current?.getState().controlReady) return;
+                macPointer.scroll(
+                  {
+                    x: x * video.videoWidth,
+                    y: y * video.videoHeight,
+                    width: video.videoWidth,
+                    height: video.videoHeight,
+                  },
+                  deltaX,
+                  deltaY,
+                );
+              }}
+              onKeyDown={handleKeyboard}
+              onKeyUp={handleKeyboard}
+              onBlur={releaseHeldMacKeys}
+            />
+          </Suspense>
+        )}
+        {macbookVisible && <DeviceModeToggle view={macbookView} label="MacBook rendering" />}
         {isDuo && (
           <video
             ref={innerVideoRef}
@@ -2257,7 +2597,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
             <DuoView
               watchOnly={watchOnly}
               showFrame={showFrame}
-              modelUrl={duoModelUrl}
+              model={duoModelUrl ?? platformAssets?.model}
               outer={videoRef.current}
               inner={innerVideoRef.current}
               state={duoState}

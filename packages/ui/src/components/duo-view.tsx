@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { DeviceModeToggle, useDeviceView } from './device-view';
 import {
   DUO_BUTTONS,
   DuoButtonSender,
@@ -19,24 +20,17 @@ type DuoViewProps = DuoFrameProps & { showFrame?: boolean };
 
 /** Native video is the default; only an explicit 3D selection loads the renderer and body asset. */
 export default function DuoView(props: DuoViewProps) {
-  const [mode, setMode] = useState<'2d' | '3d'>('2d');
+  // The 3D Duo shows its built-in body while its appearance downloads, so it takes over as soon as
+  // its code arrives; the 3D button spins until the appearance is on it.
+  const view = useDeviceView();
   return (
     <div className="rc-duo-view">
-      {props.showFrame !== false && mode === '3d' ?
+      {props.showFrame !== false && view.mode === '3d' ?
         <Suspense fallback={<DuoFlat {...props} />}>
-          <DuoFrame {...props} />
+          <DuoFrame {...props} onReady={view.onReady} />
         </Suspense>
       : <DuoFlat {...props} />}
-      {props.showFrame !== false && (
-        <div className="rc-duo-mode" role="group" aria-label="Device rendering">
-          <button type="button" aria-pressed={mode === '2d'} onClick={() => setMode('2d')}>
-            2D
-          </button>
-          <button type="button" aria-pressed={mode === '3d'} onClick={() => setMode('3d')}>
-            3D
-          </button>
-        </div>
-      )}
+      {props.showFrame !== false && <DeviceModeToggle view={view} label="Device rendering" />}
     </div>
   );
 }
