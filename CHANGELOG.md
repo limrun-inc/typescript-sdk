@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.79.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.0...v0.79.1) (2026-11-26)
+
+
+### Features
+
+* **macos:** send macOS commands over the signaling WebSocket ([#740](https://github.com/limrun-inc/typescript-sdk/issues/740)) ([50be035](https://github.com/limrun-inc/typescript-sdk/commit/50be03589bdf26aa13a55ba01fa0f2864ef76026))
+
+
+### Chores
+
+* **cli:** release 0.65.0 with SDK 0.79.0 ([e4478e2](https://github.com/limrun-inc/typescript-sdk/commit/e4478e28462153867b0fb2aaec1569b1f5df9628))
+* release 0.79.1 ([11818d9](https://github.com/limrun-inc/typescript-sdk/commit/11818d9b86308c9fd16778614cd234684ee34b60))
+* release 0.79.1 ([fe41110](https://github.com/limrun-inc/typescript-sdk/commit/fe41110c406868efe1640915f53d28b8a04ace5b))
+
 ## [0.79.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.78.1...v0.79.0) (2026-11-26)
 
 
