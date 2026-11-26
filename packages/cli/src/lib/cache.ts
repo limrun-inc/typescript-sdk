@@ -132,6 +132,7 @@ const REASONS: Record<string, string> = {
   archive: 'archiving the build sandbox failed',
   extract: 'extracting the archive failed',
   restore_deadline: 'the restore ran past the time limit',
+  not_requested: 'no client asked for the restore in time',
   save_deadline: 'publication ran past the time limit',
 };
 

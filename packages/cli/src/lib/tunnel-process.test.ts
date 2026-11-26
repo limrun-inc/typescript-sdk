@@ -131,6 +131,37 @@ describe('tunnel process state', () => {
     ]);
   });
 
+  test('replays inspection flags to a macOS child, as to iOS and Android', () => {
+    const owner = newTunnelOwner();
+    expect(
+      buildTunnelServeArgs({
+        scriptPath: '/lim/run.js',
+        product: 'macos',
+        instanceId: INSTANCE_ID,
+        owner,
+        selectors: ['localhost:3000'],
+        inspect: false,
+        harBodyLimit: 1024,
+        resetsInactivityTimeout: false,
+      }),
+    ).toEqual([
+      '/lim/run.js',
+      'macos',
+      'tunnel',
+      '--serve',
+      '--no-create',
+      '--id',
+      INSTANCE_ID,
+      `--tunnel-owner=${owner}`,
+      '--no-inspect',
+      '--har-body-limit',
+      '1024',
+      '--no-reset-inactivity-timeout',
+      '--selector',
+      'localhost:3000',
+    ]);
+  });
+
   test('replays --verbose to the child command', () => {
     const owner = newTunnelOwner();
     const args = buildTunnelServeArgs({

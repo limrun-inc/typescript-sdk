@@ -1,4 +1,4 @@
-import { AuthenticationError, PermissionDeniedError } from '@limrun/api';
+import { AuthenticationError, NotFoundError, PermissionDeniedError } from '@limrun/api';
 import { BaseCommand } from './base-command';
 import { login } from './lib/auth';
 import { readConfig } from './lib/config';
@@ -11,6 +11,12 @@ jest.mock('./lib/auth', () => ({
 jest.mock('./lib/config', () => ({
   ...jest.requireActual('./lib/config'),
   readConfig: jest.fn(),
+  clearLastInstanceId: jest.fn(),
+}));
+
+jest.mock('./lib/daemon', () => ({
+  ...jest.requireActual('./lib/daemon'),
+  stopDaemon: jest.fn(),
 }));
 
 const loginMock = login as jest.MockedFunction<typeof login>;
@@ -231,5 +237,16 @@ describe('workload identity selection', () => {
   it('fails on incomplete federation configuration instead of using a saved login', () => {
     delete process.env['LIMRUN_WORKLOAD_IDENTITY_TOKEN_FILE'];
     expect(() => makeCommand().getClient()).toThrow('workloadTokenFile');
+  });
+});
+
+describe('withAuth on a missing instance', () => {
+  it('never offers to replace a macOS instance, which is never created on its own', async () => {
+    const cmd = makeCommand({});
+    (cmd as unknown as { _lastResolvedInstanceId: string })._lastResolvedInstanceId = 'macos_us_abc';
+    const gone = new NotFoundError(404, { message: 'instance not found' }, undefined, new Headers());
+    await expect(cmd.runWithAuth(() => Promise.reject(gone))).rejects.toThrow(
+      'Instance macos_us_abc was not found. Local session and cached state were cleaned up.',
+    );
   });
 });

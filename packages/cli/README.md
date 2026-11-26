@@ -804,6 +804,79 @@ lim macos delete [ID]   # Delete an instance and discard its disk
 
 `get` and `delete` default to the last macOS instance created in the current workspace.
 
+Work inside the guest, as its user `limrun`, who can run `sudo` without a password:
+
+```bash
+lim macos run -- sw_vers                 # Run a command; output streams, its exit code is kept (alias: exec)
+lim macos ssh 8080                       # Forward localhost:8080 to the guest's SSH until Ctrl-C
+ssh -p 8080 limrun@localhost             # ...then connect from another terminal
+lim macos forward 3000                   # Reach a server in the guest at localhost:3000 until Ctrl-C
+lim macos forward 8080:3000              # ...or on another local port
+lim macos launch-app com.apple.TextEdit  # Launch an app by bundle ID, name or path
+lim macos terminate-app com.apple.TextEdit
+```
+
+`lim macos ssh` authorizes your default public key (`~/.ssh/id_ed25519.pub`, `id_ecdsa.pub` or `id_rsa.pub`), or
+creates one in `~/.lim/ssh`; pass `--public-key` to use another. Password logins stay off.
+
+`lim macos forward` reaches a server that listens on the guest's loopback, `127.0.0.1` or `::1`, or on all
+interfaces. Nothing else can connect to the guest's ports.
+
+The other way round, code in the guest reaches services on your machine through a destination tunnel:
+
+```bash
+lim macos tunnel --selector localhost:3000          # The guest's localhost:3000 is this machine's
+lim macos tunnel --selector "*.corp.example" --detach  # Names resolve in the guest and are dialed from here
+lim macos tunnel status
+lim macos tunnel stop
+lim macos create --tunnel staging                   # Or name a private tunnel that lim tunnel run serves
+```
+
+HTTP and HTTPS through the tunnel are inspected as on iOS and Android: `--har` saves them, and `--no-inspect`
+relays traffic untouched. The first inspected tunnel has the guest trust the instance's inspection CA, which
+shows a system dialog on the screen for a few seconds. Trust your own proxy's CA the same way:
+
+```bash
+lim macos tunnel --selector api.corp.example --har ./capture.har
+lim macos ca add ./proxy-ca.pem
+```
+
+Record the screen, read an app's log, and see the running apps' CPU and memory. An app's log has its messages in
+the unified log, and its stdout and stderr when `lim macos launch-app` started it; macOS sends the output of an app
+started any other way nowhere:
+
+```bash
+lim macos record start                   # lim macos record stop -o recording.mp4
+lim macos launch-app com.example.app --env API_URL=https://example.com
+lim macos app-log com.example.app --follow
+lim macos perf --since 2m
+lim macos create --record --events --app-logs com.example.app --perf --persist-ttl 24h
+lim macos recordings                     # Also app-logs, events and perf-captures
+```
+
+Drive the screen. Coordinates are pixels of `lim macos screenshot`, from the top-left corner:
+
+```bash
+lim macos screenshot screen.jpg
+lim macos tap 640 360                    # Click (--right for a context menu)
+lim macos type "hello" --enter
+lim macos press-key q --modifier command
+lim macos scroll down --amount 600 --coordinate 640,400
+lim macos drag --from 200,300 --to 600,300   # Also lim macos swipe, as on iOS
+```
+
+Keep the guest's changes between instances with a disk snapshot, an asset of kind `MacOSSnapshot`.
+`--snapshot-key` names the asset the instance saves under when it terminates, and restores from
+once it is ready; `--snapshot-restore-keys` restores from other names first. The CLI adds the asset
+permissions to the instance's role. An instance restores at most once, so one that `--reuse-if-exists`
+returns after it already restored keeps its disk as it is.
+
+```bash
+lim macos create --snapshot-key my-mac
+lim macos delete --wait-snapshot         # Wait until the save is published
+lim macos snapshot list                  # List saved snapshots; snapshot get and delete take a name
+```
+
 **Flags for `macos create`:**
 
 | Flag                           | Description                                                           |
@@ -814,6 +887,11 @@ lim macos delete [ID]   # Delete an instance and discard its disk
 | `--display-name <value>`       | Name shown in listings and the console                                |
 | `--label <key=value>`          | Metadata label, repeatable                                            |
 | `--reuse-if-exists`            | Return an existing instance with the same labels instead of a new one |
+| `--record`                     | Start a persisted screen recording once the instance is ready         |
+| `--app-logs <bundle-id>`       | Start a persisted capture of this app's log                           |
+| `--events`                     | Start a persisted capture of the clicks, scrolls and keys it receives |
+| `--perf`                       | Save the running apps' CPU and memory, sampled once a second          |
+| `--persist-ttl <value>`        | How long those captures are kept (default `72h`)                      |
 
 ---
 

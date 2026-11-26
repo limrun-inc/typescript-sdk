@@ -14,7 +14,7 @@ import {
 export const TUNNELS_ROOT = path.join(os.homedir(), '.lim', 'tunnels');
 const OWNER_PATTERN = /^[0-9a-f]{32}$/;
 
-export type TunnelProduct = 'ios' | 'android';
+export type TunnelProduct = 'ios' | 'android' | 'macos';
 
 export interface TunnelProcessState {
   owner: string;
@@ -514,7 +514,7 @@ function validateTunnelProcessState(
     !Number.isInteger(state.pid) ||
     state.pid < 0 ||
     state.instanceId !== instanceId ||
-    (state.product !== 'ios' && state.product !== 'android') ||
+    (state.product !== 'ios' && state.product !== 'android' && state.product !== 'macos') ||
     (state.status !== 'starting' && state.status !== 'ready') ||
     !startedAtValid ||
     age < 0 ||
