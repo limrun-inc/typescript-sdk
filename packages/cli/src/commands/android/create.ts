@@ -3,7 +3,7 @@ import { secretEnvFlags } from '../../lib/secret-env-flags';
 import { parseSecretEnv } from '../../lib/secret-env';
 import { delegatedPermissionsFromFlags } from '../../lib/delegated-permissions';
 import path from 'path';
-import { spawn } from 'child_process';
+import { inheritedFlags, startDetached } from '../../lib/detached';
 import { Flags } from '@oclif/core';
 import { openInBrowser } from '../../lib/browser';
 import { BaseCommand } from '../../base-command';
@@ -313,39 +313,41 @@ export default class AndroidCreate extends BaseCommand {
 
       if (flags.connect) {
         if (flags.daemon && !flags.rm) {
-          // --no-detach keeps the tunnel in this child, so the PID printed below is the one to kill.
-          const childArgs = [
-            process.argv[1],
-            'android',
-            'connect',
-            '--id',
-            instance.metadata.id,
-            '--no-detach',
-          ];
-          if (flags['adb-path']) {
-            childArgs.push('--adb-path', flags['adb-path']);
+          // android connect runs the tunnel in the background and waits until it is up, so a
+          // failure surfaces here with its log, and the PID printed is the one holding the tunnel.
+          const id = instance.metadata.id;
+          let tunnel: { pid: number; logPath: string } | undefined;
+          try {
+            tunnel = await startDetached({
+              name: `android-connect-${id}`,
+              args: [
+                'android',
+                'connect',
+                '--id',
+                id,
+                ...(flags['adb-path'] ? ['--adb-path', flags['adb-path']] : []),
+                ...inheritedFlags(flags),
+              ],
+            });
+          } catch (err) {
+            // The instance exists either way; the tunnel can be retried on its own.
+            this.warn(
+              `The instance was created, but its ADB tunnel failed to start: ${(err as Error).message}\n` +
+                `Retry with: lim android connect --id ${id}`,
+            );
           }
-          if (flags['api-key']) {
-            childArgs.push('--api-key', flags['api-key']);
-          }
-
-          const child = spawn(process.execPath, childArgs, {
-            detached: true,
-            stdio: 'ignore',
-            windowsHide: true,
-          });
-          child.unref();
           if (flags.json) {
             this.outputJson(createdInstanceOutput(instance, consoleUrl));
             return;
           }
+          if (!tunnel) return;
           this.output('');
-          this.output(`ADB tunnel starting in background (PID ${child.pid}).`);
+          this.output(`ADB tunnel running in background (PID ${tunnel.pid}, log ${tunnel.logPath}).`);
           this.output('Find the device serial with: adb devices');
           this.output('');
           this.output(`Stop the tunnel by either killing the process or deleting the instance:`);
-          this.output(`- kill ${child.pid}`);
-          this.output(`- lim android delete ${instance.metadata.id}`);
+          this.output(`- kill ${tunnel.pid}`);
+          this.output(`- lim android delete ${id}`);
           return;
         }
 
