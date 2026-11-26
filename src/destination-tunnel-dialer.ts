@@ -36,18 +36,27 @@ import {
 } from './destination-tunnel';
 import type { LogLevel, TunnelConnectionState, TunnelConnectionStateCallback } from './tunnel';
 
-const blockedResolvedAddresses = new net.BlockList();
-blockedResolvedAddresses.addSubnet('0.0.0.0', 8, 'ipv4');
-blockedResolvedAddresses.addSubnet('127.0.0.0', 8, 'ipv4');
-blockedResolvedAddresses.addSubnet('169.254.0.0', 16, 'ipv4');
-blockedResolvedAddresses.addSubnet('224.0.0.0', 3, 'ipv4');
-blockedResolvedAddresses.addSubnet('::', 96, 'ipv6');
-blockedResolvedAddresses.addSubnet('fe80::', 10, 'ipv6');
-blockedResolvedAddresses.addSubnet('ff00::', 8, 'ipv6');
-blockedResolvedAddresses.addSubnet('::ffff:0.0.0.0', 104, 'ipv6');
-blockedResolvedAddresses.addSubnet('::ffff:127.0.0.0', 104, 'ipv6');
-blockedResolvedAddresses.addSubnet('::ffff:169.254.0.0', 112, 'ipv6');
-blockedResolvedAddresses.addSubnet('::ffff:224.0.0.0', 99, 'ipv6');
+// Addresses a resolved destination must not dial. Built on first use, never at import: a
+// browser bundle that reaches this module has no net.BlockList, and never dials.
+let blockedResolvedAddressList: net.BlockList | undefined;
+function blockedResolvedAddresses(): net.BlockList {
+  if (!blockedResolvedAddressList) {
+    const list = new net.BlockList();
+    list.addSubnet('0.0.0.0', 8, 'ipv4');
+    list.addSubnet('127.0.0.0', 8, 'ipv4');
+    list.addSubnet('169.254.0.0', 16, 'ipv4');
+    list.addSubnet('224.0.0.0', 3, 'ipv4');
+    list.addSubnet('::', 96, 'ipv6');
+    list.addSubnet('fe80::', 10, 'ipv6');
+    list.addSubnet('ff00::', 8, 'ipv6');
+    list.addSubnet('::ffff:0.0.0.0', 104, 'ipv6');
+    list.addSubnet('::ffff:127.0.0.0', 104, 'ipv6');
+    list.addSubnet('::ffff:169.254.0.0', 112, 'ipv6');
+    list.addSubnet('::ffff:224.0.0.0', 99, 'ipv6');
+    blockedResolvedAddressList = list;
+  }
+  return blockedResolvedAddressList;
+}
 
 export interface DestinationTcpTunnel {
   tunnelId: string;
@@ -890,8 +899,8 @@ export function isDialableResolvedAddress(
     if (route.host === 'localhost' && (address === '127.0.0.1' || address === '::1')) return true;
   }
   const version = net.isIP(address);
-  if (version === 4) return !blockedResolvedAddresses.check(address, 'ipv4');
-  if (version === 6) return !blockedResolvedAddresses.check(address, 'ipv6');
+  if (version === 4) return !blockedResolvedAddresses().check(address, 'ipv4');
+  if (version === 6) return !blockedResolvedAddresses().check(address, 'ipv6');
   return false;
 }
 

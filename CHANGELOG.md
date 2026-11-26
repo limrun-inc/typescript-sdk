@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.79.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.1...v0.79.2) (2026-11-26)
+
+
+### Bug Fixes
+
+* let browsers import the SDK without Node's net module ([#755](https://github.com/limrun-inc/typescript-sdk/issues/755)) ([d99e582](https://github.com/limrun-inc/typescript-sdk/commit/d99e582771b87555504e1f022865f9c40d20c933))
+
+
+### Documentation
+
+* **cli:** say --reuse-if-exists matches the exact label set ([#753](https://github.com/limrun-inc/typescript-sdk/issues/753)) ([ac50a1f](https://github.com/limrun-inc/typescript-sdk/commit/ac50a1f0fca0eb1d20d099db0fc55361c8f3fe62))
+
 ## [0.79.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.0...v0.79.1) (2026-11-26)
 
 

@@ -274,7 +274,7 @@ lim ios create --jurisdiction us --display-name "CI Test" --label env=ci --rm
 | `--hard-timeout <duration>`       | Max lifetime (e.g. `1m`, `10m`, `3h`). Default: none                                                                                                                                              |
 | `--inactivity-timeout <duration>` | Idle timeout. Default: `3m`                                                                                                                                                                       |
 | `--force-bundle-id <bundle-id>`   | Lock to an app after it first enters the foreground                                                                                                                                               |
-| `--reuse-if-exists`               | Reuse an existing instance with exactly the same labels, looked up in the region that handles the create                                                                                          |
+| `--reuse-if-exists`               | Return a running instance whose labels exactly match `--label`; needs at least one `--label`. Looked up in the region that handles the create                                                     |
 | `--install <file>`                | Local file to install (auto-uploads, repeatable)                                                                                                                                                  |
 | `--install-asset <name>`          | Asset name to install (repeatable)                                                                                                                                                                |
 | `--install-url <url>`             | Signed download URL of an app to install (repeatable)                                                                                                                                             |
@@ -887,19 +887,19 @@ lim macos snapshot list                  # List saved snapshots; snapshot get an
 
 **Flags for `macos create`:**
 
-| Flag                           | Description                                                           |
-| ------------------------------ | --------------------------------------------------------------------- |
-| `--jurisdiction <value>`       | Create only in this jurisdiction: `us`, `eu` or `as`                  |
-| `--inactivity-timeout <value>` | Delete after this long without input or API calls (e.g. `30m`)        |
-| `--hard-timeout <value>`       | Delete after this long regardless of activity (e.g. `3h`)             |
-| `--display-name <value>`       | Name shown in listings and the console                                |
-| `--label <key=value>`          | Metadata label, repeatable                                            |
-| `--reuse-if-exists`            | Return an existing instance with the same labels instead of a new one |
-| `--record`                     | Start a persisted screen recording once the instance is ready         |
-| `--app-logs <bundle-id>`       | Start a persisted capture of this app's log                           |
-| `--events`                     | Start a persisted capture of the clicks, scrolls and keys it receives |
-| `--perf`                       | Save the running apps' CPU and memory, sampled once a second          |
-| `--persist-ttl <value>`        | How long those captures are kept (default `72h`)                      |
+| Flag                           | Description                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `--jurisdiction <value>`       | Create only in this jurisdiction: `us`, `eu` or `as`                                |
+| `--inactivity-timeout <value>` | Delete after this long without input or API calls (e.g. `30m`)                      |
+| `--hard-timeout <value>`       | Delete after this long regardless of activity (e.g. `3h`)                           |
+| `--display-name <value>`       | Name shown in listings and the console                                              |
+| `--label <key=value>`          | Metadata label, repeatable                                                          |
+| `--reuse-if-exists`            | Return a running instance whose labels exactly match `--label` instead of a new one |
+| `--record`                     | Start a persisted screen recording once the instance is ready                       |
+| `--app-logs <bundle-id>`       | Start a persisted capture of this app's log                                         |
+| `--events`                     | Start a persisted capture of the clicks, scrolls and keys it receives               |
+| `--perf`                       | Save the running apps' CPU and memory, sampled once a second                        |
+| `--persist-ttl <value>`        | How long those captures are kept (default `72h`)                                    |
 
 ---
 
