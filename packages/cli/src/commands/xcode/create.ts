@@ -60,7 +60,9 @@ export default class XcodeCreate extends BaseCommand {
       multiple: true,
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing instance with matching labels; its permissions remain unchanged',
+      description:
+        'Return a running instance whose labels exactly match --label instead of creating one; ' +
+        'needs at least one --label, and the instance keeps its permissions',
       default: false,
     }),
     ios: Flags.boolean({
