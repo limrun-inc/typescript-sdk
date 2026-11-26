@@ -393,7 +393,12 @@ export abstract class BaseCommand extends Command {
           if (explicitId) {
             await this.deleteCreatedInstance(explicitId);
           }
-          if (options.createReplacement !== false && this.shouldAutoCreateOnNotFound()) {
+          // macOS commands never create an instance on their own, so a missing one is not replaced.
+          if (
+            options.createReplacement !== false &&
+            !instanceId.startsWith('macos_') &&
+            this.shouldAutoCreateOnNotFound()
+          ) {
             if (!replaceable) {
               this.error(
                 `Instance ${instanceId} was not found; it may have ended. An instance named with --id or an env pin is never replaced. Create a new one, or rerun without the ID to let the command create one.`,

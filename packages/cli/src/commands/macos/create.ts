@@ -92,7 +92,7 @@ export default class MacosCreate extends BaseCommand {
       'snapshot-restore-keys': flags['snapshot-restore-keys'],
     });
     if (snapshot && flags['reuse-if-exists']) {
-      this.info('A reused instance keeps the permissions it was created with.');
+      this.info('A reused instance keeps the permissions it was created with, and its disk is not restored.');
     }
     const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events || flags.perf;
     // Parsed before the instance is created so a bad TTL fails before billing.
@@ -122,13 +122,23 @@ export default class MacosCreate extends BaseCommand {
         },
         ...(Object.keys(metadata).length > 0 && { metadata }),
       };
+      const requestedAt = Date.now();
       const instance = await this.client.macosInstances.create(params);
       const consoleUrl = this.consoleStreamUrl(instance.metadata.id);
       registerCreatedInstance(instance);
 
       if (snapshot || wantsCaptures) {
         const guest = await this.client.macosInstances.createClient({ instance, logLevel: 'none' });
-        if (snapshot) await restoreMacosSnapshot(guest, snapshot, (line) => this.info(line));
+        if (snapshot) {
+          // A reused instance already holds its own work on disk; a restore would overwrite it.
+          if (flags['reuse-if-exists'] && wasCreatedBefore(instance.metadata.createdAt, requestedAt)) {
+            this.info(
+              `Reused macOS instance ${instance.metadata.id}; its disk is kept and no snapshot is restored.`,
+            );
+          } else {
+            await restoreMacosSnapshot(guest, snapshot, (line) => this.info(line));
+          }
+        }
         if (wantsCaptures) {
           const started = await startPersistedCaptures(guest, {
             record: flags.record,
@@ -156,4 +166,16 @@ export default class MacosCreate extends BaseCommand {
       this.output(`Delete with: lim macos delete ${instance.metadata.id}`);
     });
   }
+}
+
+/** Clock skew allowed between this machine and the API when telling a reused instance from a new one. */
+const CLOCK_SKEW_MS = 5000;
+
+/**
+ * wasCreatedBefore reports whether an instance existed before this command asked for one. An
+ * instance whose age can't be read is treated as reused, so a restore never overwrites a live disk.
+ */
+function wasCreatedBefore(createdAt: string | undefined, requestedAt: number): boolean {
+  const created = createdAt ? Date.parse(createdAt) : NaN;
+  return !(created >= requestedAt - CLOCK_SKEW_MS);
 }

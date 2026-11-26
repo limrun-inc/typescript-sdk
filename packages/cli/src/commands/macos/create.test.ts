@@ -5,9 +5,9 @@ jest.mock('../../lib/config', () => ({
   registerCreatedInstance: jest.fn(),
 }));
 
-function setup(flags: Record<string, unknown>) {
+function setup(flags: Record<string, unknown>, createdAt = new Date().toISOString()) {
   const instance = {
-    metadata: { id: 'macos_test' },
+    metadata: { id: 'macos_test', createdAt },
     spec: { region: 'us-west2' },
     status: { state: 'ready', apiUrl: 'https://macos.example/v1/macos_test', token: 't' },
   };
@@ -100,4 +100,22 @@ test('--tunnel names the private tunnel in the instance spec', async () => {
   expect(create).toHaveBeenCalledWith(
     expect.objectContaining({ spec: { role: { permissions: [] }, tunnel: 'staging' } }),
   );
+});
+
+test('--reuse-if-exists keeps the disk of an instance that already existed', async () => {
+  const { command, guest, info } = setup(
+    { 'snapshot-key': 'my-mac', 'reuse-if-exists': true },
+    new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  );
+  await command.run();
+  expect(guest.restoreSnapshot).not.toHaveBeenCalled();
+  expect(info).toHaveBeenCalledWith(
+    'Reused macOS instance macos_test; its disk is kept and no snapshot is restored.',
+  );
+});
+
+test('--reuse-if-exists restores into an instance this command created', async () => {
+  const { command, guest } = setup({ 'snapshot-key': 'my-mac', 'reuse-if-exists': true });
+  await command.run();
+  expect(guest.restoreSnapshot).toHaveBeenCalledWith(expect.objectContaining({ key: 'my-mac' }));
 });

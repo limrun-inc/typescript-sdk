@@ -54,9 +54,10 @@ export default class MacosRun extends BaseCommand {
         ...(env && { env }),
         ...(flags.timeout !== undefined && { timeoutSeconds: flags.timeout }),
       });
-      // Ctrl-C ends the remote command too; the stream then reports its exit.
+      // Ctrl-C or a SIGTERM ends the remote command too; the stream then reports its exit.
       const interrupt = () => void proc.kill();
       process.once('SIGINT', interrupt);
+      process.once('SIGTERM', interrupt);
       try {
         await streamBuildCommand(
           proc,
@@ -66,6 +67,7 @@ export default class MacosRun extends BaseCommand {
         );
       } finally {
         process.off('SIGINT', interrupt);
+        process.off('SIGTERM', interrupt);
       }
     });
   }

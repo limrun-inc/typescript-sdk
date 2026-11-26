@@ -10,6 +10,7 @@ function setup(flags: Record<string, unknown>, json = true) {
       onState = listener;
       return () => {};
     }),
+    getConnectionState: jest.fn(() => 'connected'),
     close: jest.fn(),
   };
   const client = {
@@ -66,4 +67,12 @@ test('fails when the tunnel disconnects', async () => {
   await expect(running).rejects.toThrow(/SSH tunnel disconnected/);
   expect(tunnel.close).toHaveBeenCalledTimes(1);
   expect(process.listenerCount('SIGTERM')).toBe(0);
+});
+
+test('fails at once when the forward is already down, without printing a dead port', async () => {
+  const { command, tunnel, outputJson } = setup({ 'public-key': keyFile });
+  tunnel.getConnectionState.mockReturnValue('disconnected');
+  await expect(command.run()).rejects.toThrow(/SSH tunnel disconnected/);
+  expect(outputJson).not.toHaveBeenCalled();
+  expect(tunnel.close).toHaveBeenCalledTimes(1);
 });

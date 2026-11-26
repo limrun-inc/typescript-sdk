@@ -77,7 +77,7 @@ test('--json collects the output and exit code', async () => {
   expect(outputJson).toHaveBeenCalledWith({ exitCode: 0, stdout: 'ProductName: macOS\n', stderr: '' });
 });
 
-test('Ctrl-C ends the remote command', async () => {
+test.each(['SIGINT', 'SIGTERM'] as const)('%s ends the remote command', async (signal) => {
   const { command, client } = setup(['--', 'sleep', '60']);
   let finish!: () => void;
   const kill = jest.fn(async () => finish());
@@ -88,10 +88,11 @@ test('Ctrl-C ends the remote command', async () => {
   client.run.mockReturnValue(proc as never);
   const running = command.run();
   await new Promise((resolve) => setImmediate(resolve));
-  process.emit('SIGINT');
+  process.emit(signal);
   await running;
   expect(kill).toHaveBeenCalledTimes(1);
   expect(process.listenerCount('SIGINT')).toBe(0);
+  expect(process.listenerCount('SIGTERM')).toBe(0);
 });
 
 test('exec is another name for run', () => {

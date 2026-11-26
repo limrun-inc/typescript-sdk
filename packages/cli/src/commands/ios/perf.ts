@@ -77,6 +77,7 @@ export default class IosPerf extends BaseCommand {
             windowSeconds,
             since: flags.since,
             json: flags.json,
+            measured: 'Only apps you install are measured.',
           });
         } catch (err) {
           if (err instanceof SessionStreamRejectedError && err.status === 404) {

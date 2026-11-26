@@ -69,6 +69,7 @@ export default class MacosPerf extends BaseCommand {
         windowSeconds,
         since: flags.since,
         json: flags.json,
+        measured: 'Only apps in an Applications folder are measured.',
       });
     });
   }

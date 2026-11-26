@@ -60,6 +60,8 @@ export async function reportPerformance(
     windowSeconds: number | undefined;
     since: string | undefined;
     json: boolean;
+    /** Which apps the instance measures, said when none reported. */
+    measured: string;
   },
 ): Promise<void> {
   const window = samplesInWindow(
@@ -71,8 +73,8 @@ export async function reportPerformance(
     const span = options.since ?? HISTORY;
     out.info(
       options.app ?
-        `${options.app} reported no performance in the last ${span}. Only apps you install are measured.`
-      : `No app reported performance in the last ${span}. Only apps you install are measured.`,
+        `${options.app} reported no performance in the last ${span}. ${options.measured}`
+      : `No app reported performance in the last ${span}. ${options.measured}`,
     );
     return;
   }

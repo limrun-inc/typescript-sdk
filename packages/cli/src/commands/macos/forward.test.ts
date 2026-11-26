@@ -46,11 +46,16 @@ describe('forwarding through the guest API port forward', () => {
   let relay: WebSocketServer;
   let requests: http.IncomingMessage[];
   let sockets: Set<net.Socket>;
+  let guestPaths: string[];
 
   beforeEach(async () => {
     requests = [];
     sockets = new Set();
-    app = http.createServer((req, res) => res.end(`guest saw ${req.url}`));
+    guestPaths = [];
+    app = http.createServer((req, res) => {
+      guestPaths.push(req.url ?? '');
+      res.end('hello from the guest');
+    });
     app.listen(0, '127.0.0.1');
     await once(app, 'listening');
     // Stands in for limacvm and the agent: the same framing, connecting to the guest loopback.
@@ -115,7 +120,8 @@ describe('forwarding through the guest API port forward', () => {
           })
           .on('error', reject);
       });
-      expect(body).toBe('guest saw /hello');
+      expect(body).toBe('hello from the guest');
+      expect(guestPaths).toEqual(['/hello']);
       const forwarded = new URL(requests[0]!.url!, 'http://relay');
       expect(forwarded.pathname).toBe('/v1/macos_test/port-forward');
       expect(forwarded.searchParams.get('port')).toBe(String(remotePort));

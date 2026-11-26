@@ -5,6 +5,8 @@ import os from 'os';
 import path from 'path';
 import { BaseCommand } from '../../base-command';
 
+const SSH_DISCONNECTED = 'SSH tunnel disconnected. Run lim macos ssh again to reconnect.';
+
 export default class MacosSsh extends BaseCommand {
   static summary = 'Open an SSH tunnel to a macOS instance';
   static description =
@@ -34,13 +36,15 @@ export default class MacosSsh extends BaseCommand {
       const access = await client.enableSsh(publicKey);
       const tunnel = await client.startPortForward(args.port, access.port, { logLevel: 'none' });
       const command = `ssh -p ${args.port}${identity ? ` -i ${identity}` : ''} ${access.user}@localhost`;
-      if (this.isJsonEnabled()) {
-        this.outputJson({ id, user: access.user, port: args.port, command });
-      } else {
-        this.info(`Forwarding localhost:${args.port} to SSH on ${id}. Press Ctrl-C to stop.`);
-        this.output(command);
-      }
       try {
+        // A forward that is already down never reports a change, so it would wait on a dead port.
+        if (tunnel.getConnectionState() === 'disconnected') throw new Error(SSH_DISCONNECTED);
+        if (this.isJsonEnabled()) {
+          this.outputJson({ id, user: access.user, port: args.port, command });
+        } else {
+          this.info(`Forwarding localhost:${args.port} to SSH on ${id}. Press Ctrl-C to stop.`);
+          this.output(command);
+        }
         await new Promise<void>((resolve, reject) => {
           const cleanup = () => {
             unsubscribe();
@@ -55,7 +59,7 @@ export default class MacosSsh extends BaseCommand {
             if (state === 'reconnecting') this.info('SSH tunnel reconnecting...');
             if (state === 'disconnected') {
               cleanup();
-              reject(new Error('SSH tunnel disconnected. Run lim macos ssh again to reconnect.'));
+              reject(new Error(SSH_DISCONNECTED));
             }
           });
           process.once('SIGINT', stop);
