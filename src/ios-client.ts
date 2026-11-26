@@ -1068,7 +1068,8 @@ export type InstanceClient = {
   appLogTail: (bundleId: string, lines: number) => Promise<string>;
 
   /**
-   * Stream app logs for a bundle ID (batched lines every ~500ms)
+   * Stream app logs for a bundle ID, one line per event, over the instance's
+   * `/app-logs/stream` server-sent events. The stream closes when the instance ends it.
    * @param bundleId Bundle identifier of the app
    * @returns LogStream handle (use .stop() to unsubscribe)
    */
@@ -2802,9 +2803,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     const streamAppLog = (bundleId: string): LogStream => {
-      const id = generateId();
-      const subscribeMessage = { type: 'streamAppLog', id, bundleId };
-      return new LogStream(transport.url, subscribeMessage, 'streamAppLogTerminate', id);
+      // The instance serves app logs as server-sent events; appLogTail stays on signaling.
+      return new LogStream({ apiUrl: options.apiUrl, token: options.token, bundleId });
     };
 
     const streamSyslog = (): LogStream => {

@@ -497,13 +497,8 @@ class MacosInstancesHelpers extends MacosInstances {
       },
 
       streamAppLog(bundleId, handlers) {
-        const id = transport.nextId();
-        const stream = new LogStream(
-          transport.url,
-          { type: 'streamAppLog', id, bundleId },
-          'streamAppLogTerminate',
-          id,
-        );
+        // Server-sent events on the instance API, one event per line, as on iOS.
+        const stream = new LogStream({ apiUrl, token, bundleId });
         let ended = false;
         const fail = (error: Error) => {
           if (ended) return;
@@ -512,7 +507,6 @@ class MacosInstancesHelpers extends MacosInstances {
           handlers.onError?.(error);
         };
         stream.on('line', (line) => handlers.onEntry(line));
-        // An error frame ends the stream, as does the socket closing before stop.
         stream.on('error', fail);
         stream.on('close', () => fail(new Error('the app log stream ended')));
         return () => {

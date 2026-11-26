@@ -124,11 +124,6 @@ describe('macOS client', () => {
         });
       case 'appLogTail':
         return send({ type: 'appLogTailResult', id, bundleId: msg['bundleId'], logs: 'one\ntwo' });
-      case 'streamAppLog':
-        send({ type: 'appLogStream', id, bundleId: msg['bundleId'], lines: ['a', 'b'] });
-        return send({ type: 'appLogStream', id, bundleId: msg['bundleId'], lines: [], error: 'app quit' });
-      case 'streamAppLogTerminate':
-        return;
       default:
         return send({ type: `${msg['type']}Result`, id });
     }
@@ -163,6 +158,13 @@ describe('macOS client', () => {
               'id: 1\nevent: stdout\ndata: 27.2.1\n\n' +
               'id: 2\nevent: exitCode\ndata: 0\n\n',
           );
+        } else if (req.url === '/app-logs/stream?bundleId=com.apple.TextEdit') {
+          res.setHeader('Content-Type', 'text/event-stream');
+          res.end('data: a\n\n: keepalive\n\ndata: b1\ndata: b2\n\n');
+        } else if (req.url === '/app-logs/stream?bundleId=com.missing') {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ message: 'no app com.missing is installed' }));
         } else if (req.url!.startsWith('/files?')) {
           res.setHeader('Content-Type', 'video/mp4');
           res.end(Buffer.from('mp4'));
@@ -313,18 +315,27 @@ describe('macOS client', () => {
     }
   });
 
-  test('streams an app log on its own socket until the instance ends it', async () => {
+  test('streams an app log as server-sent events, one line per event', async () => {
     const limrun = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
     const mac = await limrun.macosInstances.createClient({ apiUrl, token: 'control', logLevel: 'none' });
     signals.length = 0;
+    requests.length = 0;
     try {
       const lines: string[] = [];
-      const error = await new Promise<Error>((resolve) => {
+      const ended = await new Promise<Error>((resolve) => {
         mac.streamAppLog('com.apple.TextEdit', { onEntry: (line) => lines.push(line), onError: resolve });
       });
-      expect(lines).toEqual(['a', 'b']);
-      expect(error.message).toBe('app quit');
-      expect(sent()).toEqual([{ type: 'streamAppLog', bundleId: 'com.apple.TextEdit' }]);
+      expect(lines).toEqual(['a', 'b1\nb2']);
+      expect(ended.message).toBe('the app log stream ended');
+      const refused = await new Promise<Error>((resolve) => {
+        mac.streamAppLog('com.missing', { onEntry: () => {}, onError: resolve });
+      });
+      expect(refused.message).toBe('GET /app-logs/stream failed: 404 no app com.missing is installed');
+      expect(requests.map((r) => [r.method, r.path, r.auth])).toEqual([
+        ['GET', '/app-logs/stream?bundleId=com.apple.TextEdit', 'Bearer control'],
+        ['GET', '/app-logs/stream?bundleId=com.missing', 'Bearer control'],
+      ]);
+      expect(signals).toEqual([]);
     } finally {
       mac.disconnect();
     }
