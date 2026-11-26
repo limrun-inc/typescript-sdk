@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.78.1](https://github.com/limrun-inc/typescript-sdk/compare/v0.78.0...v0.78.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* **xcode:** sync a project into the same folder from every worktree ([#741](https://github.com/limrun-inc/typescript-sdk/issues/741)) ([ff45f21](https://github.com/limrun-inc/typescript-sdk/commit/ff45f21f4c4406760bea7303fccdfa3aa55aebde))
+
+
+### Chores
+
+* **cli:** release 0.64.0 with SDK 0.78.0 ([89bd9ca](https://github.com/limrun-inc/typescript-sdk/commit/89bd9ca1746789cd1fab31828f83af88f73a5038))
+
 ## [0.78.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.77.3...v0.78.0) (2026-11-26)
 
 
