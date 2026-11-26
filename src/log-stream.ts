@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { WebSocket, Data } from 'ws';
 import { nodeProxyTransport } from './internal/proxy-transport';
+import { followAppLogEvents, type AppLogEventsSource } from './internal/app-log-events';
 
 /**
  * Handle for a running log stream subscription (app logs, syslog, or logcat).
@@ -24,26 +25,34 @@ type LogStreamMessage = {
 };
 
 /**
- * Log stream with dedicated WebSocket connection.
- * Each LogStream opens its own WebSocket to isolate log traffic from signaling.
+ * Log stream with a connection of its own, separate from signaling: a WebSocket for syslog and
+ * logcat, and server-sent events for app logs.
  */
 export class LogStream extends EventEmitter {
   private ws: WebSocket | null = null;
   private subscriptionId: string;
   private stopped = false;
   private terminateMessageType: string;
+  private sse: AbortController | null = null;
 
-  /** @internal */
+  /**
+   * @internal - Either a signaling WebSocket subscription, or the instance's app log
+   * server-sent events (`GET /app-logs/stream`), which emit one line per event.
+   */
   constructor(
-    private wsUrl: string,
-    private subscribeMessage: object,
-    terminateMessageType: string,
-    subscriptionId: string,
+    private wsUrl: string | AppLogEventsSource,
+    private subscribeMessage: object = {},
+    terminateMessageType: string = '',
+    subscriptionId: string = '',
   ) {
     super();
     this.terminateMessageType = terminateMessageType;
     this.subscriptionId = subscriptionId;
-    this._connect();
+    if (typeof wsUrl === 'string') {
+      this._connect(wsUrl);
+    } else {
+      this._follow(wsUrl);
+    }
   }
 
   override on<E extends keyof LogStreamEvents>(event: E, listener: LogStreamEvents[E]): this {
@@ -62,6 +71,8 @@ export class LogStream extends EventEmitter {
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
+    this.sse?.abort();
+    this.sse = null;
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       // Send terminate message before closing
@@ -77,10 +88,42 @@ export class LogStream extends EventEmitter {
     this.emit('close');
   }
 
+  /** @internal - Follow the app log's server-sent events */
+  private _follow(source: AppLogEventsSource): void {
+    const controller = new AbortController();
+    this.sse = controller;
+    // Emit after the caller attached its listeners, as the WebSocket stream does.
+    void Promise.resolve()
+      .then(() =>
+        followAppLogEvents(
+          source,
+          (line) => {
+            if (this.stopped) return;
+            this.emit('lines', [line]);
+            this.emit('line', line);
+          },
+          controller.signal,
+        ),
+      )
+      .then(
+        () => {
+          if (this.stopped) return;
+          this.stopped = true;
+          this.sse = null;
+          this.emit('close');
+        },
+        (error: unknown) => {
+          if (this.stopped) return;
+          this.emit('error', error instanceof Error ? error : new Error(String(error)));
+          this.stop();
+        },
+      );
+  }
+
   /** @internal - Establish the dedicated WebSocket connection */
-  private _connect(): void {
-    const proxyAgent = nodeProxyTransport.getWebSocketAgent(this.wsUrl);
-    this.ws = new WebSocket(this.wsUrl, proxyAgent ? { agent: proxyAgent } : {});
+  private _connect(wsUrl: string): void {
+    const proxyAgent = nodeProxyTransport.getWebSocketAgent(wsUrl);
+    this.ws = new WebSocket(wsUrl, proxyAgent ? { agent: proxyAgent } : {});
 
     this.ws.on('open', () => {
       if (this.stopped) {

@@ -13,6 +13,7 @@ function setup(flags: Record<string, unknown>) {
   };
   const create = jest.fn().mockResolvedValue(instance);
   const guest = {
+    disconnect: jest.fn(),
     restoreSnapshot: jest.fn().mockResolvedValue({ phase: 'restored', key: 'my-mac' }),
     startRecording: jest.fn().mockResolvedValue('rec-1'),
     startAppLogCapture: jest.fn().mockResolvedValue(undefined),

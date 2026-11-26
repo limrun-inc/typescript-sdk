@@ -1,5 +1,10 @@
-import { nodeProxyTransport } from '../internal/proxy-transport';
-import { directInstanceErrorReason } from '../internal/direct-instance-errors';
+import { LogStream } from '../log-stream';
+import {
+  openSignalingTransport,
+  type ConnectionState,
+  type ConnectionStateCallback,
+  type SignalingMessage,
+} from '../internal/signaling-transport';
 import { instanceToken } from '../instance-token';
 import { startTcpTunnel, type TcpTunnelOptions, type Tunnel } from '../tunnel';
 import { type ExecChildProcess } from '../exec-client';
@@ -117,8 +122,23 @@ export interface MacosSshAccess {
  * MacosClient works inside a running macOS instance: it runs shell commands
  * as the guest's user, forwards local ports into the guest, and drives the
  * screen with the mouse and keyboard.
+ *
+ * Commands go over the instance's signaling WebSocket, as on iOS, which the client opens when it
+ * is created and keeps open, reconnecting when it drops. Call {@link disconnect} when done.
  */
 export interface MacosClient {
+  /** Close the signaling WebSocket. Pending commands fail. */
+  disconnect(): void;
+
+  /** Send an application-level keepAlive message on the signaling WebSocket. */
+  keepAlive(): void;
+
+  /** The signaling WebSocket's connection state. */
+  getConnectionState(): ConnectionState;
+
+  /** Register a callback for connection state changes. Returns a function that unregisters it. */
+  onConnectionStateChange(callback: ConnectionStateCallback): () => void;
+
   /**
    * Run a shell command line as the guest's user, in its login session, with
    * a login shell's PATH. `cwd` is relative to the user's home directory.
@@ -345,26 +365,6 @@ class MacosInstancesHelpers extends MacosInstances {
     apiUrl = apiUrl.replace(/\/+$/, '');
     const log = createDaemonLogger('[MacosInstance]', params.logLevel ?? 'info');
 
-    async function request(path: string, init: { method: string; body?: unknown }): Promise<Response> {
-      const response = await nodeProxyTransport.fetch(`${apiUrl}${path}`, {
-        method: init.method,
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...(init.body !== undefined && { 'Content-Type': 'application/json' }),
-        },
-        ...(init.body !== undefined && { body: JSON.stringify(init.body) }),
-      });
-      if (!response.ok) {
-        const reason = directInstanceErrorReason(await response.text());
-        throw new Error(`${init.method} ${path} failed: ${response.status} ${reason}`.trim());
-      }
-      return response;
-    }
-
-    async function post(path: string, body: unknown): Promise<void> {
-      await request(path, { method: 'POST', body });
-    }
-
     function tail<T extends { ts: number }>(
       kind: 'applogs' | 'events' | 'performance',
       handlers: MacosStreamHandlers<T>,
@@ -378,12 +378,41 @@ class MacosInstancesHelpers extends MacosInstances {
       });
     }
 
+    // Restores in progress by request ID; the instance sends progress before the result.
+    const restoreProgress = new Map<string, (progress: MacosSnapshotProgress) => void>();
+    const transport = await openSignalingTransport({
+      apiUrl,
+      token,
+      logger: {
+        debug: (...args) => log('debug', args.map(String).join(' ')),
+        info: (...args) => log('info', args.map(String).join(' ')),
+        warn: (...args) => log('warn', args.map(String).join(' ')),
+        error: (...args) => log('error', args.map(String).join(' ')),
+      },
+      handleMessage: (message: SignalingMessage) => {
+        if (message.type !== 'restoreSnapshotProgress') return false;
+        if (message['progress']) restoreProgress.get(message.id)?.(message['progress']);
+        return true;
+      },
+    });
+    const send = <T = void>(
+      type: string,
+      params: Record<string, unknown> = {},
+      transform?: (message: SignalingMessage) => T,
+      timeoutMs?: number,
+    ): Promise<T> =>
+      transport.request<T>(type, params, transform ?? ((() => undefined) as () => T), timeoutMs);
+
     return {
       run: createBuildRun({ apiUrl, token, log }),
 
-      async enableSsh(publicKey: string): Promise<MacosSshAccess> {
-        const response = await request('/ssh', { method: 'POST', body: { publicKey } });
-        return (await response.json()) as MacosSshAccess;
+      disconnect: () => transport.disconnect(),
+      keepAlive: () => transport.keepAlive(),
+      getConnectionState: () => transport.getConnectionState(),
+      onConnectionStateChange: (callback) => transport.onConnectionStateChange(callback),
+
+      enableSsh(publicKey: string): Promise<MacosSshAccess> {
+        return send('enableSsh', { publicKey }, (msg) => ({ user: msg['user'], port: msg['port'] }));
       },
 
       startPortForward(localPort, remotePort, options) {
@@ -413,103 +442,103 @@ class MacosInstancesHelpers extends MacosInstances {
 
       async startRecording(options) {
         if (options?.recordingId !== undefined) validateRecordingId(options.recordingId);
-        const response = await request('/recordings', {
-          method: 'POST',
-          body: {
+        return send(
+          'startVideoRecordingSession',
+          {
             ...(options?.recordingId !== undefined && { recordingId: options.recordingId }),
             ...(options?.quality !== undefined && { quality: options.quality }),
             ...persistFields(options?.persist),
           },
-        });
-        return ((await response.json()) as { recordingId: string }).recordingId;
+          (msg) => msg['recordingId'] as string,
+        );
       },
 
       async stopRecording(recordingId, saveTo = {}) {
         if (recordingId !== undefined) validateRecordingId(recordingId);
-        const response = await request(
-          recordingId === undefined ? '/recordings/stop' : `/recordings/${recordingId}/stop`,
+        const stoppedId = await send(
+          'stopVideoRecordingSession',
           {
-            method: 'POST',
-            body: saveTo.presignedUrl ? { presignedUrl: saveTo.presignedUrl } : {},
+            ...(recordingId !== undefined && { recordingId }),
+            ...(saveTo.presignedUrl && { upload: { presignedUrl: saveTo.presignedUrl } }),
           },
+          (msg) => msg['recordingId'] as string | undefined,
+          recordingStopTimeoutMs,
         );
-        const stopped = ((await response.json()) as { recordingId?: string }).recordingId || recordingId;
+        const stopped = stoppedId || recordingId;
         if (!stopped) throw new Error('the instance did not say which recording stopped');
         const downloadUrl = `${apiUrl}/files?name=${encodeURIComponent(`recording_${stopped}.mp4`)}`;
         if (saveTo.localPath) await downloadFileToLocalPath(downloadUrl, token, saveTo.localPath);
         return downloadUrl;
       },
 
-      async launchApp(app, options) {
-        const response = await request('/apps/launch', {
-          method: 'POST',
-          body: {
-            app,
+      launchApp(app, options) {
+        return send(
+          'launchApp',
+          {
+            bundleId: app,
             ...(options?.mode !== undefined && { mode: options.mode }),
-            ...(options?.arguments !== undefined && { arguments: options.arguments }),
+            ...(options?.arguments !== undefined && { args: options.arguments }),
             ...(options?.env !== undefined && { env: options.env }),
           },
-        });
-        return (await response.json()) as MacosLaunchAppResult;
+          (msg): MacosLaunchAppResult => ({
+            bundleId: msg['bundleId'] ?? app,
+            pid: msg['pid'],
+            launched: msg['launched'] ?? false,
+          }),
+          launchAppTimeoutMs,
+        );
       },
 
       async terminateApp(bundleId) {
-        await request('/apps/terminate', { method: 'POST', body: { bundleId } });
+        await send('terminateApp', { bundleId });
       },
 
-      async appLogTail(bundleId, lines) {
-        const query = new URLSearchParams({ bundleId, lines: String(lines) });
-        const response = await request(`/app-logs?${query}`, { method: 'GET' });
-        return ((await response.json()) as { logs?: string }).logs ?? '';
+      appLogTail(bundleId, lines) {
+        return send('appLogTail', { bundleId, lines }, (msg) => (msg['logs'] as string | undefined) ?? '');
       },
 
       streamAppLog(bundleId, handlers) {
-        const controller = new AbortController();
-        void (async () => {
-          try {
-            const response = await nodeProxyTransport.fetch(
-              `${apiUrl}/app-logs/stream?${new URLSearchParams({ bundleId })}`,
-              { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal },
-            );
-            if (!response.ok || !response.body) {
-              throw new Error(
-                `GET /app-logs/stream failed: ${response.status} ${await response.text()}`.trim(),
-              );
-            }
-            for await (const event of readServerSentEvents(response.body)) handlers.onEntry(event.data);
-            if (!controller.signal.aborted) throw new Error('the app log stream ended');
-          } catch (error) {
-            if (!controller.signal.aborted) {
-              handlers.onError?.(error instanceof Error ? error : new Error(String(error)));
-            }
-          }
-        })();
-        return () => controller.abort();
+        // Server-sent events on the instance API, one event per line, as on iOS.
+        const stream = new LogStream({ apiUrl, token, bundleId });
+        let ended = false;
+        const fail = (error: Error) => {
+          if (ended) return;
+          ended = true;
+          stream.stop();
+          handlers.onError?.(error);
+        };
+        stream.on('line', (line) => handlers.onEntry(line));
+        stream.on('error', fail);
+        stream.on('close', () => fail(new Error('the app log stream ended')));
+        return () => {
+          ended = true;
+          stream.stop();
+        };
       },
 
       async startAppLogCapture({ bundleId, persist }) {
         if (!bundleId) throw new Error('bundleId must be a non-empty string');
-        await post('/session/applogs/start', { bundleId, ...persistFields(persist) });
+        await send('startAppLogCapture', { bundleId, ...persistFields(persist) });
       },
 
       async stopAppLogCapture() {
-        await post('/session/applogs/stop', {});
+        await send('stopAppLogCapture', {}, undefined, captureStopTimeoutMs);
       },
 
       async startEventCapture(options) {
-        await post('/session/events/start', { ...persistFields(options?.persist) });
+        await send('startEventCapture', { ...persistFields(options?.persist) });
       },
 
       async stopEventCapture() {
-        await post('/session/events/stop', {});
+        await send('stopEventCapture', {}, undefined, captureStopTimeoutMs);
       },
 
       async startPerformanceCapture(options) {
-        await post('/session/performance/start', { ...ttlFields(options?.ttlSeconds) });
+        await send('startPerformanceCapture', { ...ttlFields(options?.ttlSeconds) });
       },
 
       async stopPerformanceCapture() {
-        await post('/session/performance/stop', {});
+        await send('stopPerformanceCapture', {}, undefined, captureStopTimeoutMs);
       },
 
       streamAppLogCapture(handlers) {
@@ -532,49 +561,66 @@ class MacosInstancesHelpers extends MacosInstances {
         await stopDestinationTunnel(apiUrl, token, tunnelId);
       },
 
-      async screenshot(): Promise<Buffer> {
-        const response = await request('/screenshot.jpg', { method: 'GET' });
-        return Buffer.from(await response.arrayBuffer());
+      screenshot(): Promise<Buffer> {
+        return send('screenshot', {}, (msg) =>
+          Buffer.from((msg['base64'] as string | undefined) ?? '', 'base64'),
+        );
       },
 
-      tap(point, options) {
-        return post('/tap', { x: point.x, y: point.y, ...(options?.button && { button: options.button }) });
+      async tap(point, options) {
+        await send('tap', { x: point.x, y: point.y, ...(options?.button && { button: options.button }) });
       },
 
-      typeText(text) {
-        return post('/type', { text });
+      async typeText(text) {
+        await send('typeText', { text });
       },
 
-      pressKey(key, modifiers) {
-        return post('/press-key', { key, ...(modifiers?.length && { modifiers }) });
+      async pressKey(key, modifiers) {
+        await send('pressKey', { key, ...(modifiers?.length && { modifiers }) });
       },
 
-      scroll({ dx, dy, at }) {
-        return post('/scroll', { dx: dx ?? 0, dy: dy ?? 0, ...(at && { x: at.x, y: at.y }) });
+      async scroll({ dx, dy, at }) {
+        await send('scroll', { dx: dx ?? 0, dy: dy ?? 0, ...(at && { coordinate: [at.x, at.y] }) });
       },
 
       async restoreSnapshot({
         onProgress,
-        ...body
+        key,
+        restoreKeys,
       }: MacosSnapshotRestoreOptions): Promise<MacosSnapshotProgress> {
-        const response = await request('/snapshot', { method: 'POST', body });
-        if (!response.body) throw new Error('POST /snapshot answered without a body');
+        const id = transport.nextId();
         let last: MacosSnapshotProgress | undefined;
-        for await (const event of readServerSentEvents(response.body)) {
-          if (event.event !== 'snapshot') continue;
-          last = JSON.parse(event.data) as MacosSnapshotProgress;
-          onProgress?.(last);
+        restoreProgress.set(id, (progress) => {
+          last = progress;
+          onProgress?.(progress);
+        });
+        try {
+          // A restore downloads the whole disk, so it waits as long as the connection lasts.
+          let final: MacosSnapshotProgress | undefined;
+          try {
+            final = await transport.request<MacosSnapshotProgress | undefined>(
+              'restoreSnapshot',
+              { ...(key !== undefined && { key }), ...(restoreKeys !== undefined && { restoreKeys }) },
+              (msg) => msg['progress'] as MacosSnapshotProgress | undefined,
+              0,
+              id,
+            );
+          } catch (error) {
+            // A failed restore is an outcome, as it was reported in its progress, not an error.
+            if (last?.phase === 'failed') return last;
+            throw error;
+          }
+          if (final && final !== last) onProgress?.(final);
+          const result = final ?? last;
+          if (!result) throw new Error('the instance finished the restore without reporting its progress');
+          return result;
+        } finally {
+          restoreProgress.delete(id);
         }
-        if (!last || !['restored', 'skipped', 'failed'].includes(last.phase)) {
-          throw new Error(
-            `the snapshot stream ended before the restore did (last phase: ${last?.phase ?? 'none'})`,
-          );
-        }
-        return last;
       },
 
-      drag(from, to, options) {
-        return post('/drag', {
+      async drag(from, to, options) {
+        await send('drag', {
           fromX: from.x,
           fromY: from.y,
           toX: to.x,
@@ -585,6 +631,12 @@ class MacosInstancesHelpers extends MacosInstances {
     };
   }
 }
+
+// A stop answers once its persisted capture or recording is uploaded, which grows with its length.
+const captureStopTimeoutMs = 300_000;
+const recordingStopTimeoutMs = 180_000;
+// A first launch or a relaunch can take longer than the default, as on iOS.
+const launchAppTimeoutMs = 90_000;
 
 MacosInstances.prototype.createClient = MacosInstancesHelpers.prototype.createClient;
 
@@ -616,40 +668,5 @@ MacosInstances.prototype.listPerformanceCaptures = function (this: MacosInstance
 function validateRecordingId(recordingId: string): void {
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(recordingId)) {
     throw new Error('recordingId must match ^[a-z0-9][a-z0-9_-]{0,63}$');
-  }
-}
-
-/** readServerSentEvents yields the events of a server-sent event stream as they arrive. */
-async function* readServerSentEvents(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<{ event: string; data: string }> {
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let event = 'message';
-  let data: string[] = [];
-  const reader = body.getReader();
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newline: number;
-      while ((newline = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, newline).replace(/\r$/, '');
-        buffer = buffer.slice(newline + 1);
-        if (line === '') {
-          if (data.length > 0) yield { event, data: data.join('\n') };
-          event = 'message';
-          data = [];
-        } else if (line.startsWith('event:')) {
-          event = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-          data.push(line.slice(5).replace(/^ /, ''));
-        }
-      }
-    }
-    if (data.length > 0) yield { event, data: data.join('\n') };
-  } finally {
-    reader.releaseLock();
   }
 }

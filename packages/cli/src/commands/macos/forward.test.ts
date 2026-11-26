@@ -122,13 +122,16 @@ describe('forwarding through the guest API port forward', () => {
       });
       expect(body).toBe('hello from the guest');
       expect(guestPaths).toEqual(['/hello']);
-      const forwarded = new URL(requests[0]!.url!, 'http://relay');
+      // The client's first socket is the signaling one; the port forward opens its own.
+      const forward = requests.find((req) => req.url!.includes('/port-forward'))!;
+      const forwarded = new URL(forward.url!, 'http://relay');
       expect(forwarded.pathname).toBe('/v1/macos_test/port-forward');
       expect(forwarded.searchParams.get('port')).toBe(String(remotePort));
-      expect(requests[0]!.headers.authorization).toBe('Bearer instance-token');
+      expect(forward.headers.authorization).toBe('Bearer instance-token');
     } finally {
       process.emit('SIGTERM');
       await run;
+      client.disconnect();
     }
   });
 });

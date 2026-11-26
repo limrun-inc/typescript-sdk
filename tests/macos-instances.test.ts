@@ -72,11 +72,66 @@ test('macOS instances use their own routes, query params and conditional update'
 
 describe('macOS client', () => {
   let server: import('http').Server;
+  let signaling: import('ws').WebSocketServer;
   let apiUrl: string;
   const requests: Array<{ method: string; path: string; auth?: string; body: unknown }> = [];
+  const signals: Array<Record<string, unknown>> = [];
+  const signalingUrls: string[] = [];
+
+  // Replies to a signaling request, as limacvm does; streams send several messages.
+  const reply = (ws: import('ws').WebSocket, msg: Record<string, any>) => {
+    const send = (m: Record<string, unknown>) => ws.send(JSON.stringify(m));
+    const id = msg['id'];
+    switch (msg['type']) {
+      case 'screenshot':
+        return send({
+          type: 'screenshotResult',
+          id,
+          base64: Buffer.from([0xff, 0xd8, 0xff]).toString('base64'),
+          width: 3,
+          height: 1,
+        });
+      case 'enableSsh':
+        return send({ type: 'enableSshResult', id, user: 'limrun', port: 22 });
+      case 'restoreSnapshot':
+        send({ type: 'restoreSnapshotProgress', id, progress: { phase: 'resolving' } });
+        send({
+          type: 'restoreSnapshotProgress',
+          id,
+          progress: { phase: 'downloading', totalBytes: 10, doneBytes: 4 },
+        });
+        return send({
+          type: 'restoreSnapshotResult',
+          id,
+          progress: { phase: 'restored', key: 'my-mac', matchKind: 'exact_hit' },
+        });
+      case 'startVideoRecordingSession':
+        return send({
+          type: 'startVideoRecordingSessionResult',
+          id,
+          recordingId: 'rec-1',
+          captureId: 'rec-123',
+        });
+      case 'stopVideoRecordingSession':
+        return send({ type: 'stopVideoRecordingSessionResult', id, recordingId: 'rec-1' });
+      case 'launchApp':
+        return send({ type: 'launchAppResult', id, bundleId: 'com.example.app', pid: 42, launched: true });
+      case 'terminateApp':
+        return send({
+          type: 'terminateAppResult',
+          id,
+          ...(msg['bundleId'] === 'com.missing' && { error: 'no app com.missing is installed' }),
+        });
+      case 'appLogTail':
+        return send({ type: 'appLogTailResult', id, bundleId: msg['bundleId'], logs: 'one\ntwo' });
+      default:
+        return send({ type: `${msg['type']}Result`, id });
+    }
+  };
 
   beforeAll(async () => {
     const http = await import('http');
+    const { WebSocketServer } = await import('ws');
     server = http.createServer((req, res) => {
       let raw = '';
       req.on('data', (chunk) => (raw += chunk));
@@ -103,44 +158,32 @@ describe('macOS client', () => {
               'id: 1\nevent: stdout\ndata: 27.2.1\n\n' +
               'id: 2\nevent: exitCode\ndata: 0\n\n',
           );
-        } else if (req.url === '/snapshot') {
+        } else if (req.url === '/app-logs/stream?bundleId=com.apple.TextEdit') {
           res.setHeader('Content-Type', 'text/event-stream');
-          res.write('event: snapshot\ndata: {"phase":"resolving"}\n\n');
-          res.write(': keepalive\n\n');
-          res.write('event: snapshot\ndata: {"phase":"downloading","totalBytes":10,"doneBytes":4}\n\n');
-          res.end('event: snapshot\ndata: {"phase":"restored","key":"my-mac","matchKind":"exact_hit"}\n\n');
-        } else if (req.url === '/ssh') {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ user: 'limrun', port: 22 }));
-        } else if (req.url === '/recordings') {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ recordingId: 'rec-1', captureId: 'rec-123' }));
-        } else if (req.url === '/recordings/stop' || req.url === '/recordings/rec-1/stop') {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ recordingId: 'rec-1' }));
-        } else if (req.url!.startsWith('/files?')) {
-          res.setHeader('Content-Type', 'video/mp4');
-          res.end(Buffer.from('mp4'));
-        } else if (req.url!.startsWith('/app-logs?')) {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ bundleId: 'com.apple.TextEdit', logs: 'one\ntwo' }));
-        } else if (req.url === '/apps/launch') {
-          res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ bundleId: 'com.example.app', pid: 42, launched: true }));
-        } else if (req.url === '/apps/terminate' && raw.includes('com.missing')) {
+          res.end('data: a\n\n: keepalive\n\ndata: b1\ndata: b2\n\n');
+        } else if (req.url === '/app-logs/stream?bundleId=com.missing') {
           res.statusCode = 404;
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ message: 'no app com.missing is installed' }));
+        } else if (req.url!.startsWith('/files?')) {
+          res.setHeader('Content-Type', 'video/mp4');
+          res.end(Buffer.from('mp4'));
         } else if (req.url === '/trusted-cas') {
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ sha256: 'ab'.repeat(32) }));
-        } else if (req.url === '/screenshot.jpg') {
-          res.setHeader('Content-Type', 'image/jpeg');
-          res.end(Buffer.from([0xff, 0xd8, 0xff]));
         } else {
-          res.statusCode = 204;
+          res.statusCode = 404;
           res.end();
         }
+      });
+    });
+    signaling = new WebSocketServer({ server, path: '/signaling' });
+    signaling.on('connection', (ws, req) => {
+      signalingUrls.push(req.url!);
+      ws.on('message', (data) => {
+        const msg = JSON.parse(data.toString()) as Record<string, any>;
+        signals.push(msg);
+        reply(ws, msg);
       });
     });
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -148,103 +191,154 @@ describe('macOS client', () => {
     apiUrl = `http://127.0.0.1:${address.port}`;
   });
 
-  afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
-
-  test('runs commands, sets up SSH and drives the screen through the guest API', async () => {
-    const limrun = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
-    const mac = await limrun.macosInstances.createClient({ apiUrl, token: 'control', logLevel: 'none' });
-
-    const lines: string[] = [];
-    const proc = mac.run('sw_vers', { cwd: 'Desktop', env: ['A=b'], timeoutSeconds: 30 });
-    proc.stdout.on('data', (line: string) => lines.push(line));
-    const result = await proc;
-    expect(result.exitCode).toBe(0);
-    expect(lines).toEqual(['27.2.1']);
-
-    expect(await mac.enableSsh('ssh-ed25519 AAAA test')).toEqual({ user: 'limrun', port: 22 });
-    expect([...(await mac.screenshot())]).toEqual([0xff, 0xd8, 0xff]);
-    await mac.tap({ x: 10, y: 20 }, { button: 'right' });
-    await mac.typeText('hi');
-    await mac.pressKey('q', ['command']);
-    await mac.scroll({ dy: 300, at: { x: 5, y: 6 } });
-    await mac.drag({ x: 1, y: 2 }, { x: 3, y: 4 }, { durationMs: 100 });
-    const progress: string[] = [];
-    const restored = await mac.restoreSnapshot({
-      key: 'my-mac',
-      restoreKeys: ['my-mac', 'base-'],
-      onProgress: (p) => progress.push(p.phase),
-    });
-    expect(restored).toEqual({ phase: 'restored', key: 'my-mac', matchKind: 'exact_hit' });
-    expect(progress).toEqual(['resolving', 'downloading', 'restored']);
-
-    const posts = requests.filter((r) => r.method === 'POST');
-    expect(posts.every((r) => r.auth === 'Bearer control')).toBe(true);
-    expect(posts.map((r) => [r.path, r.body])).toEqual([
-      ['/exec', { command: 'run', commandLine: 'sw_vers', cwd: 'Desktop', env: ['A=b'], timeoutSeconds: 30 }],
-      ['/ssh', { publicKey: 'ssh-ed25519 AAAA test' }],
-      ['/tap', { x: 10, y: 20, button: 'right' }],
-      ['/type', { text: 'hi' }],
-      ['/press-key', { key: 'q', modifiers: ['command'] }],
-      ['/scroll', { dx: 0, dy: 300, x: 5, y: 6 }],
-      ['/drag', { fromX: 1, fromY: 2, toX: 3, toY: 4, durationMs: 100 }],
-      ['/snapshot', { key: 'my-mac', restoreKeys: ['my-mac', 'base-'] }],
-    ]);
+  afterAll(async () => {
+    for (const client of signaling.clients) client.terminate();
+    await new Promise<void>((resolve) => signaling.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
-  test('records the screen, captures logs, events and performance, and trusts CAs', async () => {
+  // The fields of each signaling request, without the client-chosen id.
+  const sent = () => signals.map(({ id, ...rest }) => (expect(typeof id).toBe('string'), rest));
+
+  test('runs commands over HTTP, and sets up SSH and drives the screen over signaling', async () => {
+    const limrun = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
+    const mac = await limrun.macosInstances.createClient({ apiUrl, token: 'control', logLevel: 'none' });
+    signals.length = 0;
+    try {
+      expect(signalingUrls.at(-1)).toBe('/signaling?token=control');
+      expect(mac.getConnectionState()).toBe('connected');
+
+      const lines: string[] = [];
+      const proc = mac.run('sw_vers', { cwd: 'Desktop', env: ['A=b'], timeoutSeconds: 30 });
+      proc.stdout.on('data', (line: string) => lines.push(line));
+      const result = await proc;
+      expect(result.exitCode).toBe(0);
+      expect(lines).toEqual(['27.2.1']);
+
+      expect(await mac.enableSsh('ssh-ed25519 AAAA test')).toEqual({ user: 'limrun', port: 22 });
+      expect([...(await mac.screenshot())]).toEqual([0xff, 0xd8, 0xff]);
+      await mac.tap({ x: 10, y: 20 }, { button: 'right' });
+      await mac.typeText('hi');
+      await mac.pressKey('q', ['command']);
+      await mac.scroll({ dy: 300, at: { x: 5, y: 6 } });
+      await mac.drag({ x: 1, y: 2 }, { x: 3, y: 4 }, { durationMs: 100 });
+      const progress: string[] = [];
+      const restored = await mac.restoreSnapshot({
+        key: 'my-mac',
+        restoreKeys: ['my-mac', 'base-'],
+        onProgress: (p) => progress.push(p.phase),
+      });
+      expect(restored).toEqual({ phase: 'restored', key: 'my-mac', matchKind: 'exact_hit' });
+      expect(progress).toEqual(['resolving', 'downloading', 'restored']);
+
+      expect(requests.filter((r) => r.method === 'POST').map((r) => [r.path, r.auth])).toEqual([
+        ['/exec', 'Bearer control'],
+      ]);
+      expect(sent()).toEqual([
+        { type: 'enableSsh', publicKey: 'ssh-ed25519 AAAA test' },
+        { type: 'screenshot' },
+        { type: 'tap', x: 10, y: 20, button: 'right' },
+        { type: 'typeText', text: 'hi' },
+        { type: 'pressKey', key: 'q', modifiers: ['command'] },
+        { type: 'scroll', dx: 0, dy: 300, coordinate: [5, 6] },
+        { type: 'drag', fromX: 1, fromY: 2, toX: 3, toY: 4, durationMs: 100 },
+        { type: 'restoreSnapshot', key: 'my-mac', restoreKeys: ['my-mac', 'base-'] },
+      ]);
+    } finally {
+      mac.disconnect();
+    }
+    expect(mac.getConnectionState()).toBe('disconnected');
+  });
+
+  test('records the screen, runs apps, captures logs, events and performance, and trusts CAs', async () => {
     const fs = await import('fs');
     const os = await import('os');
     const pathModule = await import('path');
     const limrun = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
     const mac = await limrun.macosInstances.createClient({ apiUrl, token: 'control', logLevel: 'none' });
     requests.length = 0;
+    signals.length = 0;
+    try {
+      expect(await mac.startRecording({ quality: 7, persist: { ttlSeconds: 600 } })).toBe('rec-1');
+      const localPath = pathModule.join(fs.mkdtempSync(pathModule.join(os.tmpdir(), 'mac-rec-')), 'out.mp4');
+      const url = await mac.stopRecording(undefined, { localPath });
+      expect(url).toBe(`${apiUrl}/files?name=recording_rec-1.mp4`);
+      expect(fs.readFileSync(localPath, 'utf8')).toBe('mp4');
+      await mac.stopRecording('rec-1', { presignedUrl: 'https://bucket.example/put' });
+      await expect(mac.stopRecording('Not Valid')).rejects.toThrow('recordingId must match');
 
-    expect(await mac.startRecording({ quality: 7, persist: { ttlSeconds: 600 } })).toBe('rec-1');
-    const localPath = pathModule.join(fs.mkdtempSync(pathModule.join(os.tmpdir(), 'mac-rec-')), 'out.mp4');
-    const url = await mac.stopRecording(undefined, { localPath });
-    expect(url).toBe(`${apiUrl}/files?name=recording_rec-1.mp4`);
-    expect(fs.readFileSync(localPath, 'utf8')).toBe('mp4');
-    await mac.stopRecording('rec-1');
-    await expect(mac.stopRecording('Not Valid')).rejects.toThrow('recordingId must match');
+      expect(
+        await mac.launchApp('Example', { mode: 'RelaunchIfRunning', arguments: ['-v'], env: { A: 'b' } }),
+      ).toEqual({ bundleId: 'com.example.app', pid: 42, launched: true });
+      await mac.terminateApp('com.example.app');
+      await expect(mac.terminateApp('com.missing')).rejects.toThrow('no app com.missing is installed');
+      expect(await mac.appLogTail('com.apple.TextEdit', 50)).toBe('one\ntwo');
+      await mac.startAppLogCapture({ bundleId: 'com.apple.TextEdit', persist: true });
+      await mac.stopAppLogCapture();
+      await mac.startEventCapture();
+      await mac.stopEventCapture();
+      await mac.startPerformanceCapture({ ttlSeconds: 3600 });
+      await mac.stopPerformanceCapture();
+      expect(await mac.addCaCertificate('-----BEGIN CERTIFICATE-----')).toEqual({ sha256: 'ab'.repeat(32) });
 
-    expect(
-      await mac.launchApp('Example', { mode: 'RelaunchIfRunning', arguments: ['-v'], env: { A: 'b' } }),
-    ).toEqual({ bundleId: 'com.example.app', pid: 42, launched: true });
-    await mac.terminateApp('com.example.app');
-    await expect(mac.terminateApp('com.missing')).rejects.toThrow(
-      'POST /apps/terminate failed: 404 no app com.missing is installed',
-    );
-    expect(await mac.appLogTail('com.apple.TextEdit', 50)).toBe('one\ntwo');
-    await mac.startAppLogCapture({ bundleId: 'com.apple.TextEdit', persist: true });
-    await mac.stopAppLogCapture();
-    await mac.startEventCapture();
-    await mac.stopEventCapture();
-    await mac.startPerformanceCapture({ ttlSeconds: 3600 });
-    await mac.stopPerformanceCapture();
-    expect(await mac.addCaCertificate('-----BEGIN CERTIFICATE-----')).toEqual({ sha256: 'ab'.repeat(32) });
+      expect(requests.map((r) => [r.method, r.path, r.auth])).toEqual([
+        ['GET', '/files?name=recording_rec-1.mp4', 'Bearer control'],
+        ['POST', '/trusted-cas', 'Bearer control'],
+      ]);
+      expect(sent()).toEqual([
+        { type: 'startVideoRecordingSession', quality: 7, persist: true, ttlSeconds: 600 },
+        { type: 'stopVideoRecordingSession' },
+        {
+          type: 'stopVideoRecordingSession',
+          recordingId: 'rec-1',
+          upload: { presignedUrl: 'https://bucket.example/put' },
+        },
+        {
+          type: 'launchApp',
+          bundleId: 'Example',
+          mode: 'RelaunchIfRunning',
+          args: ['-v'],
+          env: { A: 'b' },
+        },
+        { type: 'terminateApp', bundleId: 'com.example.app' },
+        { type: 'terminateApp', bundleId: 'com.missing' },
+        { type: 'appLogTail', bundleId: 'com.apple.TextEdit', lines: 50 },
+        { type: 'startAppLogCapture', bundleId: 'com.apple.TextEdit', persist: true },
+        { type: 'stopAppLogCapture' },
+        { type: 'startEventCapture' },
+        { type: 'stopEventCapture' },
+        { type: 'startPerformanceCapture', ttlSeconds: 3600 },
+        { type: 'stopPerformanceCapture' },
+      ]);
+    } finally {
+      mac.disconnect();
+    }
+  });
 
-    expect(requests.map((r) => [r.method, r.path, r.body])).toEqual([
-      ['POST', '/recordings', { quality: 7, persist: true, ttlSeconds: 600 }],
-      ['POST', '/recordings/stop', {}],
-      ['GET', '/files?name=recording_rec-1.mp4', undefined],
-      ['POST', '/recordings/rec-1/stop', {}],
-      [
-        'POST',
-        '/apps/launch',
-        { app: 'Example', mode: 'RelaunchIfRunning', arguments: ['-v'], env: { A: 'b' } },
-      ],
-      ['POST', '/apps/terminate', { bundleId: 'com.example.app' }],
-      ['POST', '/apps/terminate', { bundleId: 'com.missing' }],
-      ['GET', '/app-logs?bundleId=com.apple.TextEdit&lines=50', undefined],
-      ['POST', '/session/applogs/start', { bundleId: 'com.apple.TextEdit', persist: true }],
-      ['POST', '/session/applogs/stop', {}],
-      ['POST', '/session/events/start', {}],
-      ['POST', '/session/events/stop', {}],
-      ['POST', '/session/performance/start', { ttlSeconds: 3600 }],
-      ['POST', '/session/performance/stop', {}],
-      ['POST', '/trusted-cas', '-----BEGIN CERTIFICATE-----'],
-    ]);
-    expect(requests.every((r) => r.auth === 'Bearer control')).toBe(true);
+  test('streams an app log as server-sent events, one line per event', async () => {
+    const limrun = new Limrun({ apiKey: 'key', baseURL: 'https://api.example.test' });
+    const mac = await limrun.macosInstances.createClient({ apiUrl, token: 'control', logLevel: 'none' });
+    signals.length = 0;
+    requests.length = 0;
+    try {
+      const lines: string[] = [];
+      const ended = await new Promise<Error>((resolve) => {
+        mac.streamAppLog('com.apple.TextEdit', { onEntry: (line) => lines.push(line), onError: resolve });
+      });
+      expect(lines).toEqual(['a', 'b1\nb2']);
+      expect(ended.message).toBe('the app log stream ended');
+      const refused = await new Promise<Error>((resolve) => {
+        mac.streamAppLog('com.missing', { onEntry: () => {}, onError: resolve });
+      });
+      expect(refused.message).toBe('GET /app-logs/stream failed: 404 no app com.missing is installed');
+      expect(requests.map((r) => [r.method, r.path, r.auth])).toEqual([
+        ['GET', '/app-logs/stream?bundleId=com.apple.TextEdit', 'Bearer control'],
+        ['GET', '/app-logs/stream?bundleId=com.missing', 'Bearer control'],
+      ]);
+      expect(signals).toEqual([]);
+    } finally {
+      mac.disconnect();
+    }
   });
 });
 
@@ -289,6 +383,7 @@ test('a macOS tunnel dials the instance with its token and inspects as iOS and A
         ...(req.headers.authorization && { auth: req.headers.authorization }),
         start,
       });
+      if (start['type'] !== 'start') return;
       ws.send(
         JSON.stringify({
           type: 'ready',
@@ -313,6 +408,7 @@ test('a macOS tunnel dials the instance with its token and inspects as iOS and A
     const tunnel = await mac.startTunnel({ selectors: ['localhost:3000'], resetsInactivityTimeout: false });
     expect(tunnel.tunnelId).toBe('tun-1');
     tunnel.close();
+    mac.disconnect();
     expect(seen).toHaveLength(1);
     expect(seen[0]!.path).toBe('/v1/macos_eu_01h/api/tunnel');
     expect(seen[0]!.auth).toBe('Bearer control');
