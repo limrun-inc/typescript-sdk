@@ -43,6 +43,7 @@ function run(
 }
 
 beforeEach(() => {
+  jest.mocked(startDetached).mockReset();
   jest.mocked(startDetached).mockResolvedValue({ pid: 7, logPath: '/tmp/x.log', ready: { ok: true } });
 });
 
@@ -87,4 +88,14 @@ test.each([
   // The background process connects; this one returns without opening anything.
   expect(withAuth).not.toHaveBeenCalled();
   expect(outputJson).toHaveBeenCalledWith({ ok: true, pid: 7, logPath: '/tmp/x.log' });
+});
+
+test('ios reverse refuses a bad mapping before starting a background process', async () => {
+  const { done } = run(
+    IosReverse,
+    { mapping: '8081' },
+    { detach: true, json: true, 'local-host': '127.0.0.1' },
+  );
+  await expect(done).rejects.toThrow(/between 57090 and 57099/);
+  expect(startDetached).not.toHaveBeenCalled();
 });

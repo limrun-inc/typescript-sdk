@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -23,8 +24,9 @@ export function detachedDirectory(): string {
 /**
  * startDetached runs `lim <args> --no-detach --json` in a background process that outlives this
  * one, and returns once it prints its ready JSON. Long-running commands such as forwards and
- * tunnels use it, so they return the terminal by default. `name` keeps each command's files
- * apart, such as `ios-forward-<instance>-8100`.
+ * tunnels use it, so they return the terminal by default. The child is ready only once it holds
+ * what it serves, such as a bound port, so a port another process holds fails it rather than
+ * passing. `name` prefixes the run's files, such as `ios-forward-<instance>-8100`.
  */
 export async function startDetached(opts: {
   name: string;
@@ -33,13 +35,18 @@ export async function startDetached(opts: {
 }): Promise<DetachedCommand> {
   const directory = detachedDirectory();
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const logPath = path.join(directory, `${opts.name}.log`);
+  // Each run gets files of its own: two runs of one command, such as forwards to port 0, must not
+  // read each other's ready JSON.
+  const run = `${opts.name}-${randomUUID().slice(0, 8)}`;
+  const logPath = path.join(directory, `${run}.log`);
   // stdout carries only the ready JSON under --json, so it gets a file of its own to parse.
-  const readyPath = path.join(directory, `${opts.name}.ready.json`);
+  const readyPath = path.join(directory, `${run}.ready.json`);
   const logFd = fs.openSync(logPath, 'w', 0o600);
   const readyFd = fs.openSync(readyPath, 'w', 0o600);
   const child = spawn(process.execPath, [process.argv[1]!, ...opts.args, '--no-detach', '--json'], {
     detached: true,
+    // Without it Windows opens a console window for every background command.
+    windowsHide: true,
     stdio: ['ignore', readyFd, logFd],
   });
   fs.closeSync(logFd);

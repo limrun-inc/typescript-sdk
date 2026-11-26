@@ -313,7 +313,15 @@ export default class AndroidCreate extends BaseCommand {
 
       if (flags.connect) {
         if (flags.daemon && !flags.rm) {
-          const childArgs = [process.argv[1], 'android', 'connect', '--id', instance.metadata.id];
+          // --no-detach keeps the tunnel in this child, so the PID printed below is the one to kill.
+          const childArgs = [
+            process.argv[1],
+            'android',
+            'connect',
+            '--id',
+            instance.metadata.id,
+            '--no-detach',
+          ];
           if (flags['adb-path']) {
             childArgs.push('--adb-path', flags['adb-path']);
           }
@@ -324,6 +332,7 @@ export default class AndroidCreate extends BaseCommand {
           const child = spawn(process.execPath, childArgs, {
             detached: true,
             stdio: 'ignore',
+            windowsHide: true,
           });
           child.unref();
           if (flags.json) {

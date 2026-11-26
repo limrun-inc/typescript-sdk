@@ -47,6 +47,8 @@ export default class IosReverse extends BaseCommand {
     this.setParsedFlags(flags);
 
     if (flags.detach) {
+      // Refuse a bad mapping here, with its own message, before a background process starts.
+      parseReversePortMapping(args.mapping);
       const id = this.resolveIosInstance(flags.id).id;
       const { pid, logPath, ready } = await startDetached({
         name: `ios-reverse-${id}-${args.mapping.replace(':', '-')}`,

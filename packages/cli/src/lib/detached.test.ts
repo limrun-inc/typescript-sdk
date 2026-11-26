@@ -32,7 +32,8 @@ test('returns the ready JSON once the background process prints it, and leaves i
   try {
     expect(started.ready).toEqual({ args: ['ios', 'forward', '8100', '--no-detach', '--json'] });
     expect(() => process.kill(started.pid, 0)).not.toThrow();
-    expect(started.logPath).toBe(path.join(dir, '.lim', 'detached', 'test-ready.log'));
+    expect(path.dirname(started.logPath)).toBe(path.join(dir, '.lim', 'detached'));
+    expect(path.basename(started.logPath)).toMatch(/^test-ready-[0-9a-f]{8}\.log$/);
   } finally {
     process.kill(started.pid, 'SIGKILL');
   }
@@ -53,4 +54,23 @@ test('stops a background process that never becomes ready', async () => {
   await expect(
     startDetached({ name: 'test-slow', args: ['ios', 'reverse'], timeoutMs: 500 }),
   ).rejects.toThrow(/did not become ready in time/);
+});
+
+test('overlapping runs of one command each read their own ready JSON', async () => {
+  cli(`
+    process.stdout.write(JSON.stringify({ pid: process.pid }) + '\\n');
+    setTimeout(() => {}, 60_000);
+  `);
+  const [first, second] = await Promise.all([
+    startDetached({ name: 'test-same', args: ['ios', 'forward', '0:8100'] }),
+    startDetached({ name: 'test-same', args: ['ios', 'forward', '0:8100'] }),
+  ]);
+  try {
+    expect(first.ready).toEqual({ pid: first.pid });
+    expect(second.ready).toEqual({ pid: second.pid });
+    expect(first.logPath).not.toBe(second.logPath);
+  } finally {
+    process.kill(first.pid, 'SIGKILL');
+    process.kill(second.pid, 'SIGKILL');
+  }
 });
