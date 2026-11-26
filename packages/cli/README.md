@@ -515,8 +515,9 @@ lim ios forward 0:8100 --id <instance-ID> --json
 ```
 
 A single port uses that port on both sides. The local listener binds to `127.0.0.1`.
-The command stays running until Ctrl+C, including with `--json`, and closes its
-connections when it exits. Start the server inside the simulator separately and
+The forward runs in a background process and the command returns once it listens,
+printing the PID; stop it with `kill <pid>`, which closes its connections. Pass
+`--no-detach` to keep it in the foreground until Ctrl+C. Start the server inside the simulator separately and
 bind it to the simulator's assigned IP or `0.0.0.0`. A server bound only to
 `127.0.0.1` inside the simulator is not reachable through this forward.
 
@@ -671,7 +672,8 @@ lim android connect
 lim android connect --id android_abc123 --adb-path /usr/local/bin/adb
 ```
 
-The tunnel stays open until you press Ctrl+C. While connected, you can use `adb` commands in another terminal.
+The tunnel runs in a background process and the command returns once it is up, printing the PID; stop it with
+`kill <pid>`. Pass `--no-detach` to keep it in the foreground until Ctrl+C. While connected, you can use `adb` commands.
 
 ---
 
@@ -812,16 +814,18 @@ Work inside the guest, as its user `limrun`, who can run `sudo` without a passwo
 
 ```bash
 lim macos run -- sw_vers                 # Run a command; output streams, its exit code is kept (alias: exec)
-lim macos ssh 8080                       # Forward localhost:8080 to the guest's SSH until Ctrl-C
-ssh -p 8080 limrun@localhost             # ...then connect from another terminal
-lim macos forward 3000                   # Reach a server in the guest at localhost:3000 until Ctrl-C
+lim macos ssh 8080                       # Forward localhost:8080 to the guest's SSH in the background
+ssh -p 8080 limrun@localhost             # ...then connect
+lim macos forward 3000                   # Reach a server in the guest at localhost:3000, in the background
 lim macos forward 8080:3000              # ...or on another local port
 lim macos launch-app com.apple.TextEdit  # Launch an app by bundle ID, name or path
 lim macos terminate-app com.apple.TextEdit
 ```
 
 `lim macos ssh` authorizes your default public key (`~/.ssh/id_ed25519.pub`, `id_ecdsa.pub` or `id_rsa.pub`), or
-creates one in `~/.lim/ssh`; pass `--public-key` to use another. Password logins stay off.
+creates one in `~/.lim/ssh`; pass `--public-key` to use another. Password logins stay off. The forward runs in a
+background process, which the command prints with its PID; stop it with `kill <pid>`. Pass `--no-detach` to keep it in
+the foreground until Ctrl-C.
 
 `lim macos forward` reaches a server that listens on the guest's loopback, `127.0.0.1` or `::1`, or on all
 interfaces. Nothing else can connect to the guest's ports.

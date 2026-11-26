@@ -4,16 +4,18 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { BaseCommand } from '../../base-command';
+import { inheritedFlags, startDetached } from '../../lib/detached';
 
 const SSH_DISCONNECTED = 'SSH tunnel disconnected. Run lim macos ssh again to reconnect.';
 
 export default class MacosSsh extends BaseCommand {
   static summary = 'Open an SSH tunnel to a macOS instance';
   static description =
-    'Turn on SSH inside the macOS guest, authorize your public key, and forward a local port to it until you press Ctrl-C. Then connect with ssh -p <port> limrun@localhost from another terminal, or point scp, rsync or your editor at it. Without --public-key, the first of ~/.ssh/id_ed25519.pub, id_ecdsa.pub and id_rsa.pub is used, or a key is created in ~/.lim/ssh.';
+    'Turn on SSH inside the macOS guest, authorize your public key, and forward a local port to it. The forward runs in the background and the command returns once it listens; stop it with kill <pid>. With --no-detach it runs in the foreground until you press Ctrl-C. Then connect with ssh -p <port> limrun@localhost, or point scp, rsync or your editor at it. Without --public-key, the first of ~/.ssh/id_ed25519.pub, id_ecdsa.pub and id_rsa.pub is used, or a key is created in ~/.lim/ssh.';
   static examples = [
     '<%= config.bin %> macos ssh 8080',
     '<%= config.bin %> macos ssh 2222 --public-key ~/.ssh/work.pub',
+    '<%= config.bin %> macos ssh 2222 --no-detach',
   ];
 
   static args = {
@@ -24,12 +26,48 @@ export default class MacosSsh extends BaseCommand {
     ...BaseCommand.baseFlags,
     id: Flags.string({ description: 'macOS instance ID. Defaults to the last created macOS instance.' }),
     'public-key': Flags.string({ description: 'OpenSSH public key file to authorize.' }),
+    detach: Flags.boolean({
+      description:
+        'Run the forward in a background process and return once it listens. Use --no-detach to stay in the foreground.',
+      default: true,
+      allowNo: true,
+    }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(MacosSsh);
     this.setParsedFlags(flags);
-    const { publicKey, identity } = this.loadPublicKey(flags['public-key']);
+    const { publicKey, publicKeyFile, identity } = this.loadPublicKey(flags['public-key']);
+
+    if (flags.detach) {
+      const id = this.resolveMacosTarget(flags.id).id;
+      const { pid, logPath, ready } = await startDetached({
+        name: `macos-ssh-${id}-${args.port}`,
+        args: [
+          'macos',
+          'ssh',
+          String(args.port),
+          '--id',
+          id,
+          '--public-key',
+          publicKeyFile,
+          ...inheritedFlags(flags),
+        ],
+      });
+      // The child names the key file explicitly, so its command would add -i for a default key.
+      const command = `ssh -p ${args.port}${identity ? ` -i ${identity}` : ''} ${String(
+        ready['user'],
+      )}@localhost`;
+      if (this.isJsonEnabled()) {
+        this.outputJson({ ...ready, command, pid, logPath });
+      } else {
+        this.info(
+          `Forwarding localhost:${args.port} to SSH on ${id} in the background. Stop it with kill ${pid}.`,
+        );
+        this.output(command);
+      }
+      return;
+    }
 
     await this.withAuth(async () => {
       const { id, client } = await this.resolveMacosClient(flags.id);
@@ -71,18 +109,24 @@ export default class MacosSsh extends BaseCommand {
     });
   }
 
-  /** The key to authorize, and the private key ssh needs -i for when it is not a default one. */
-  private loadPublicKey(file: string | undefined): { publicKey: string; identity?: string } {
+  /** The key to authorize, its file, and the private key ssh needs -i for when it is not a default one. */
+  private loadPublicKey(file: string | undefined): {
+    publicKey: string;
+    publicKeyFile: string;
+    identity?: string;
+  } {
     if (file) {
       const resolved = file.replace(/^~(?=$|\/)/, os.homedir());
       return {
         publicKey: fs.readFileSync(resolved, 'utf8').trim(),
+        publicKeyFile: resolved,
         identity: resolved.replace(/\.pub$/, ''),
       };
     }
     for (const name of ['id_ed25519', 'id_ecdsa', 'id_rsa']) {
       const candidate = path.join(os.homedir(), '.ssh', `${name}.pub`);
-      if (fs.existsSync(candidate)) return { publicKey: fs.readFileSync(candidate, 'utf8').trim() };
+      if (fs.existsSync(candidate))
+        return { publicKey: fs.readFileSync(candidate, 'utf8').trim(), publicKeyFile: candidate };
     }
     const directory = path.join(os.homedir(), '.lim', 'ssh');
     const key = path.join(directory, 'id_ed25519');
@@ -93,6 +137,10 @@ export default class MacosSsh extends BaseCommand {
       });
       this.info(`Created an SSH key at ${key}.`);
     }
-    return { publicKey: fs.readFileSync(`${key}.pub`, 'utf8').trim(), identity: key };
+    return {
+      publicKey: fs.readFileSync(`${key}.pub`, 'utf8').trim(),
+      publicKeyFile: `${key}.pub`,
+      identity: key,
+    };
   }
 }

@@ -1,4 +1,10 @@
+import { startDetached } from '../../lib/detached';
 import AndroidCreate, { androidDeviceSelection } from './create';
+
+jest.mock('../../lib/detached', () => ({
+  ...jest.requireActual('../../lib/detached'),
+  startDetached: jest.fn(),
+}));
 
 jest.mock('../../lib/config', () => ({
   ...jest.requireActual('../../lib/config'),
@@ -30,6 +36,7 @@ function setup(flags: Record<string, unknown>) {
     consoleStreamUrl: () => 'https://console.example.test/stream/android_test',
     info: jest.fn(),
     output: jest.fn(),
+    warn: jest.fn(),
   });
   Object.defineProperty(command, 'client', { value: { androidInstances: { create } } });
   return { command, create };
@@ -63,4 +70,33 @@ test('omits tunnelHeaders without --tunnel-header', async () => {
   await command.run();
 
   expect(create.mock.calls[0][0].spec).not.toHaveProperty('tunnelHeaders');
+});
+
+describe('--connect in the background', () => {
+  beforeEach(() => jest.mocked(startDetached).mockReset());
+
+  test('starts android connect through startDetached and prints the PID that holds the tunnel', async () => {
+    jest.mocked(startDetached).mockResolvedValue({ pid: 99, logPath: '/tmp/connect.log', ready: {} });
+    const { command } = setup({ connect: true, daemon: true, 'adb-path': '/opt/adb', 'api-key': 'k' });
+
+    await command.run();
+
+    expect(startDetached).toHaveBeenCalledWith({
+      name: 'android-connect-android_test',
+      args: ['android', 'connect', '--id', 'android_test', '--adb-path', '/opt/adb', '--api-key', 'k'],
+    });
+    expect(command.output).toHaveBeenCalledWith('- kill 99');
+  });
+
+  test('warns instead of failing when the tunnel does not come up, since the instance exists', async () => {
+    jest.mocked(startDetached).mockRejectedValue(new Error('exited during startup (code 1)'));
+    const { command } = setup({ connect: true, daemon: true });
+
+    await command.run();
+
+    expect(command.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/exited during startup[\s\S]*lim android connect --id android_test/),
+    );
+    expect(command.output).not.toHaveBeenCalledWith(expect.stringMatching(/^- kill/));
+  });
 });
