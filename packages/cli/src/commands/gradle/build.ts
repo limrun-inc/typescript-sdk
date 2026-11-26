@@ -7,7 +7,7 @@ import { BaseCommand } from '../../base-command';
 import { compileIgnorePatterns } from '../../lib/ignore-patterns';
 import { syncFlags } from '../../lib/sync-flags';
 import { parseSnapshotConfig } from '../../lib/cache';
-import { gradleSnapshotFlags } from '../../lib/cache-flags';
+import { buildSnapshotFlags } from '../../lib/cache-flags';
 import { parseAdditionalFileFlags } from '../../lib/additional-files';
 import {
   gradleAndroidABIs,
@@ -64,7 +64,7 @@ export default class GradleBuild extends BaseCommand {
     ...BaseCommand.baseFlags,
     ...secretEnvFlags,
     ...secretFileFlags,
-    ...gradleSnapshotFlags,
+    ...buildSnapshotFlags,
     ...BaseCommand.permissionFlags,
     'additional-file': syncFlags['additional-file'],
     id: Flags.string({
@@ -219,6 +219,7 @@ export default class GradleBuild extends BaseCommand {
     let additionalFiles: ReturnType<typeof parseAdditionalFileFlags>;
     let applicationId: string | undefined;
     const syncPath = args.path ?? process.cwd();
+    this.snapshotProjectPath = syncPath;
     try {
       additionalFiles = parseAdditionalFileFlags(flags['additional-file']);
       options = gradleBuildOptionsFromFlags(flags);

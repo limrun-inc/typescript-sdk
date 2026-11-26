@@ -1,14 +1,23 @@
 import fs from 'fs';
 import path from 'path';
-import type { XcodeCacheConfig } from '@limrun/api';
-import { type CacheFlags, parseSnapshotConfig } from './cache';
+import { type BuildSnapshotConfig, type CacheFlags, parseSnapshotConfig } from './cache';
 
 /** Explicit settings keep their semantics, including restore-only snapshots. */
-export function projectSnapshotConfig(flags: CacheFlags, projectPath: string): XcodeCacheConfig | undefined {
+export function projectSnapshotConfig(
+  flags: CacheFlags,
+  projectPath: string,
+  kind: 'xcode' | 'gradle' = 'xcode',
+): BuildSnapshotConfig | undefined {
   const explicit = parseSnapshotConfig(flags);
-  if (explicit || flags['no-snapshot']) return explicit;
+  if (flags['no-snapshot'] || (explicit && (explicit.key || !explicit.ttlSeconds))) return explicit;
   const key = projectSnapshotKey(projectPath);
-  return key ? { key } : undefined;
+  // Gradle stores keys under shared/ within the 255-character limit and reserves folder names.
+  if (key && (kind === 'xcode' || (key.length <= 248 && !/^(shared|users)\//.test(key)))) {
+    return { ...explicit, key };
+  }
+  if (explicit?.ttlSeconds)
+    throw new Error('Could not derive a snapshot key. Pass --snapshot-key with --snapshot-ttl.');
+  return undefined;
 }
 
 /** Share snapshots across clones and worktrees without including local paths or credentials. */

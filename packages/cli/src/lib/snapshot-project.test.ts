@@ -186,3 +186,37 @@ test('defaults to a key alone and preserves explicit keys, restore-only settings
     'cannot be combined',
   );
 });
+
+test('Gradle derives only keys that fit its shared snapshot folder', () => {
+  const host = 'git.example.com';
+  const key = host + '/' + 'a'.repeat(248 - host.length - 1);
+  setOrigin('https://' + key);
+  expect(projectSnapshotConfig({}, repo, 'gradle')).toEqual({ key });
+  setOrigin('https://' + key + 'b');
+  expect(projectSnapshotConfig({}, repo, 'gradle')).toBeUndefined();
+  expect(projectSnapshotConfig({}, repo, 'xcode')).toEqual({ key: key + 'b' });
+  setOrigin('git@shared:repo.git');
+  expect(projectSnapshotConfig({}, repo, 'gradle')).toBeUndefined();
+});
+
+test.each(['xcode', 'gradle'] as const)('%s applies the TTL to a derived or explicit save key', (kind) => {
+  const flags = { 'snapshot-ttl': '7d' };
+  expect(projectSnapshotConfig(flags, repo, kind)).toEqual({
+    key: 'github.com/acme/monorepo',
+    ttlSeconds: 604800,
+  });
+  expect(projectSnapshotConfig({ ...flags, 'snapshot-key': 'pr' }, temp, kind)).toEqual({
+    key: 'pr',
+    ttlSeconds: 604800,
+  });
+  expect(() => projectSnapshotConfig(flags, temp, kind)).toThrow('--snapshot-key');
+  expect(() => projectSnapshotConfig({ ...flags, 'snapshot-restore-keys': 'pr' }, repo, kind)).toThrow(
+    'save key',
+  );
+  expect(() => projectSnapshotConfig({ ...flags, 'no-snapshot': true }, repo, kind)).toThrow(
+    'cannot be combined',
+  );
+  for (const invalid of ['0s', '-3d', '9999999999h', 'forever']) {
+    expect(() => projectSnapshotConfig({ 'snapshot-ttl': invalid }, repo, kind)).toThrow();
+  }
+});

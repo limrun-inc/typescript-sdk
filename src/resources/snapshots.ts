@@ -19,6 +19,7 @@ export interface SnapshotList<Snapshot> {
 }
 
 export interface XcodeSnapshot {
+  expiresAt?: string;
   key: string;
   directoryKey: string;
   rootName: string;
@@ -32,6 +33,7 @@ export interface XcodeSnapshot {
 }
 
 export interface GradleSnapshot {
+  expiresAt?: string;
   key: string;
   /** Toolchains label of the image that saved it. An instance with another label tries its next restore key. */
   compatKey: string;

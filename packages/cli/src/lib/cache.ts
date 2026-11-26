@@ -1,5 +1,5 @@
 import type { XcodeCacheConfig } from '@limrun/api';
-import { formatDurationMs } from './duration';
+import { formatDurationMs, parseDurationSeconds } from './duration';
 
 /**
  * The part of a disk snapshot status these lines read. Xcode's cache and Gradle's snapshot both
@@ -36,7 +36,10 @@ export type SnapshotState = { restore: SnapshotRestoreState; save: SnapshotSaveS
 // The oclif flag definitions live in ./cache-flags so that everything here stays importable
 // without oclif, which is what lets the root test suite cover it.
 
+export type BuildSnapshotConfig = XcodeCacheConfig & { ttlSeconds?: number };
+
 export type CacheFlags = {
+  'snapshot-ttl'?: string | undefined;
   'no-snapshot'?: boolean | undefined;
   'snapshot-key'?: string | undefined;
   'snapshot-restore-keys'?: string | undefined;
@@ -47,17 +50,28 @@ export type CacheFlags = {
 };
 
 /** The cache configuration a create request carries, or undefined for an ordinary instance. */
-export function parseSnapshotConfig(flags: CacheFlags): XcodeCacheConfig | undefined {
+export function parseSnapshotConfig(flags: CacheFlags): BuildSnapshotConfig | undefined {
   const key = (flags['snapshot-key'] ?? flags['cache-key'])?.trim() || undefined;
   const restoreKeys = splitList(flags['snapshot-restore-keys'] ?? flags['cache-restore-keys']);
   const paths = splitList(flags['snapshot-paths'] ?? flags['cache-paths']);
-  if (flags['no-snapshot'] && (key || restoreKeys || paths)) {
-    throw new Error('--no-snapshot cannot be combined with snapshot keys or paths.');
+  const ttl = flags['snapshot-ttl'];
+  let ttlSeconds: number | undefined;
+  if (ttl !== undefined) {
+    const days = /^(\d+)d$/.exec(ttl);
+    ttlSeconds = days ? Number(days[1]) * 86400 : parseDurationSeconds(ttl);
+    if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0 || ttlSeconds > 2147483647) {
+      throw new Error('--snapshot-ttl must be a positive duration of at most 2147483647 seconds.');
+    }
+    if (!key && restoreKeys) throw new Error('--snapshot-ttl needs a save key with --snapshot-restore-keys.');
   }
-  if (!key && !restoreKeys && !paths) {
+  if (flags['no-snapshot'] && (key || restoreKeys || paths || ttlSeconds)) {
+    throw new Error('--no-snapshot cannot be combined with other snapshot options.');
+  }
+  if (!key && !restoreKeys && !paths && !ttlSeconds) {
     return undefined;
   }
   return {
+    ...(ttlSeconds ? { ttlSeconds } : {}),
     ...(key ? { key } : {}),
     ...(restoreKeys ? { restoreKeys } : {}),
     ...(paths ? { paths } : {}),
@@ -69,10 +83,11 @@ export function parseSnapshotConfig(flags: CacheFlags): XcodeCacheConfig | undef
  * fixed set of build state, so the flags never offer them.
  */
 export function gradleSnapshotConfig(
-  config: XcodeCacheConfig | undefined,
-): { key?: string; restoreKeys?: string[] } | undefined {
+  config: BuildSnapshotConfig | undefined,
+): Omit<BuildSnapshotConfig, 'paths'> | undefined {
   if (!config) return undefined;
   return {
+    ...(config.ttlSeconds ? { ttlSeconds: config.ttlSeconds } : {}),
     ...(config.key ? { key: config.key } : {}),
     ...(config.restoreKeys ? { restoreKeys: config.restoreKeys } : {}),
   };

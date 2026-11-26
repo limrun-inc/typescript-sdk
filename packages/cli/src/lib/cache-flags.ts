@@ -1,10 +1,14 @@
 import { Flags } from '@oclif/core';
 
-/** Disk snapshot flags shared by commands that can create or bind a snapshot. */
-export const snapshotFlags = {
+/** Snapshot settings shared by Xcode and Gradle builds. */
+export const buildSnapshotFlags = {
   'no-snapshot': Flags.boolean({
     description: 'Create without a disk snapshot. Existing instances keep their snapshot configuration.',
-    exclusive: ['snapshot-key', 'snapshot-restore-keys', 'snapshot-paths'],
+    exclusive: ['snapshot-key', 'snapshot-restore-keys', 'snapshot-ttl'],
+  }),
+  'snapshot-ttl': Flags.string({
+    description:
+      'Expire the saved disk snapshot after this duration from publication, for example 12h or 7d. Defaults to bucket retention.',
   }),
   'snapshot-key': Flags.string({
     aliases: ['cache-key'],
@@ -16,26 +20,16 @@ export const snapshotFlags = {
     description:
       'Comma-separated disk snapshot keys to restore from, tried in this order: exact match first, then keys starting with the given prefix, newest archive first.',
   }),
-  'snapshot-paths': Flags.string({
-    aliases: ['cache-paths'],
-    description:
-      'Comma-separated project-root-relative paths to include in the disk snapshot, such as "Pods". Defaults to the whole workspace. A restore can land at a different absolute path, so include only content that works anywhere: path-keyed state such as DerivedData or SwiftPM .build rebuilds from scratch. The first publication under a key fixes its path set.',
-  }),
 };
 
-/**
- * Gradle's disk snapshot flags. They match Xcode's, without --snapshot-paths: a Gradle snapshot
- * keeps a fixed set of build state rather than paths the caller picks. Gradle snapshots are
- * opt-in, so there is no --no-snapshot either: no default key exists to turn off.
- */
-export const gradleSnapshotFlags = {
-  'snapshot-key': Flags.string({
+/** Xcode also supports saving selected workspace paths. */
+export const snapshotFlags = {
+  ...buildSnapshotFlags,
+  'snapshot-paths': Flags.string({
+    aliases: ['cache-paths'],
+    exclusive: ['no-snapshot'],
     description:
-      'Disk snapshot key to restore and save at termination. Gradle instances use no disk snapshot unless this or --snapshot-restore-keys is set. Reusing a key replaces its snapshot. Also used to restore when --snapshot-restore-keys is omitted. The snapshot keeps the synced project, Gradle caches, ccache and Android SDK packages the build installed.',
-  }),
-  'snapshot-restore-keys': Flags.string({
-    description:
-      'Comma-separated disk snapshot keys to restore from, tried in this order: exact match first, then keys starting with the given prefix, newest snapshot first. A key saved by a build sandbox with different toolchains is skipped for the next one.',
+      'Comma-separated project-root-relative paths to include in the disk snapshot, such as "Pods". Defaults to the whole workspace. A restore can land at a different absolute path, so include only content that works anywhere: path-keyed state such as DerivedData or SwiftPM .build rebuilds from scratch. The first publication under a key fixes its path set.',
   }),
 };
 

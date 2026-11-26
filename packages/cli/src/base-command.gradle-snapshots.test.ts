@@ -59,7 +59,7 @@ class TestCommand extends BaseCommand {
   resolve(id?: string) {
     return this.resolveGradleTargetOrCreate(id);
   }
-  apply(config?: { key?: string; restoreKeys?: string[] }) {
+  apply(config?: { key?: string; restoreKeys?: string[]; ttlSeconds?: number }) {
     return this.applyBuildCacheToTarget(target, config, 'gradle');
   }
   snapshotTip() {
@@ -76,25 +76,27 @@ beforeEach(() => {
   register.mockImplementation(() => target);
 });
 
-test('auto-creation without snapshot flags creates without a snapshot or a restore wait', async () => {
+test('opting out skips Git discovery and the restore wait', async () => {
   const cmd = new TestCommand([], {} as never);
   Object.assign(cmd, { getCommandParts: () => ['gradle', 'build'] });
-  cmd.configure({}, '/repo/apps/android');
+  cmd.configure({ 'no-snapshot': true }, '/repo/apps/android');
   await expect(cmd.resolve()).resolves.toEqual(target);
   expect(cmd.create).toHaveBeenCalledWith({ wait: true, spec: { role: { permissions: [] } } });
-  // Gradle snapshots are opt-in: the project's Git origin is never read for a key.
   expect(projectSnapshotKey).not.toHaveBeenCalled();
   expect(cmd.follow).not.toHaveBeenCalled();
 });
 
-test('auto-creation sends an explicit key and waits for the restore before returning', async () => {
+test.each([
+  [{}, 'github.com/acme/monorepo/apps/android'],
+  [{ 'snapshot-key': 'custom' }, 'custom'],
+])('auto-creation sends the snapshot key and waits for restore: %j', async (flags, key) => {
   const cmd = new TestCommand([], {} as never);
   Object.assign(cmd, { getCommandParts: () => ['gradle', 'build'] });
-  cmd.configure({ 'snapshot-key': 'github.com/acme/monorepo/apps/android' }, '/repo/apps/android');
+  cmd.configure(flags, '/repo/apps/android');
   await expect(cmd.resolve()).resolves.toEqual(target);
   expect(cmd.create).toHaveBeenCalledWith({
     wait: true,
-    spec: { role: { permissions: [] }, snapshot: { key: 'github.com/acme/monorepo/apps/android' } },
+    spec: { role: { permissions: [] }, snapshot: { key } },
   });
   expect(cmd.follow).toHaveBeenCalledWith(target.id, expect.objectContaining({ side: 'restore' }));
   expect(cmd.xcodeFollow).not.toHaveBeenCalled();
@@ -110,7 +112,16 @@ test('existing instances are not rebound without a key, and an explicit key bind
   expect(cmd.create).not.toHaveBeenCalled();
   expect(cmd.bind).not.toHaveBeenCalled();
   await cmd.apply({ key: 'explicit' });
-  expect(cmd.bind).toHaveBeenCalledWith(target.id, 'explicit');
+  expect(cmd.bind).toHaveBeenCalledWith(target.id, 'explicit', undefined);
+});
+
+test('TTL on an existing sandbox updates its configured save key', async () => {
+  const cmd = new TestCommand([], {} as never);
+  cmd.getSnapshot.mockResolvedValue({ config: { key: 'existing' } });
+  await cmd.apply({ ttlSeconds: 3600 });
+  expect(cmd.bind).toHaveBeenCalledWith(target.id, 'existing', {
+    body: { key: 'existing', ttlSeconds: 3600 },
+  });
 });
 
 test('build outcomes suggest a key for a sandbox without a snapshot', async () => {
@@ -128,7 +139,7 @@ test('an instance collected before its restore started is an error, not a cold b
 });
 
 test.each([GradleBuild, GradleSync])(
-  '%s derives no snapshot key from the project it syncs',
+  '%s derives a snapshot key from the project it syncs',
   async (Command) => {
     const cmd = new Command([], {} as never);
     const stop = new Error('stop before remote work');
@@ -146,7 +157,7 @@ test.each([GradleBuild, GradleSync])(
       info: jest.fn(),
     });
     await expect(cmd.run()).rejects.toThrow(stop);
-    expect(config).toBeUndefined();
-    expect(projectSnapshotKey).not.toHaveBeenCalled();
+    expect(config).toEqual({ key: 'github.com/acme/monorepo/apps/android' });
+    expect(projectSnapshotKey).toHaveBeenCalledWith('/different-repo/apps/android');
   },
 );

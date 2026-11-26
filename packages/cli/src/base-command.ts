@@ -51,8 +51,9 @@ import {
   skippedKeyLines,
   wantsRestore,
   type SnapshotState,
+  type BuildSnapshotConfig,
 } from './lib/cache';
-import type { XcodeCacheConfig, XcodeClient, XcodeSelectResult } from '@limrun/api';
+import type { XcodeClient, XcodeSelectResult } from '@limrun/api';
 import { type IosInstance } from '@limrun/api/resources/ios-instances';
 import { formatXcode, resolveRequestedXcodeVersion, type RequestedXcodeVersion } from './lib/xcode-version';
 import type { TunnelCommandIO } from './lib/tunnel-command';
@@ -995,24 +996,20 @@ export abstract class BaseCommand extends Command {
     }
   }
 
-  /**
-   * The snapshot configuration a create sends. Xcode derives a key from the project's Git origin
-   * when no flag names one; Gradle snapshots are opt-in, so only the flags turn them on. Defaults
-   * apply only at creation; existing targets keep their snapshot configuration.
-   */
-  protected cacheConfigFromFlags(kind: SnapshotKind = 'xcode'): XcodeCacheConfig | undefined {
+  /** Derive a project key only when creating a sandbox with no explicit snapshot settings. */
+  protected cacheConfigFromFlags(kind: SnapshotKind = 'xcode'): BuildSnapshotConfig | undefined {
     const flags = this.parsedFlags;
     if (!flags) return undefined;
     const asString = (name: string) =>
       typeof flags[name] === 'string' ? (flags[name] as string) : undefined;
     const explicit = {
       'no-snapshot': flags['no-snapshot'] === true,
+      'snapshot-ttl': asString('snapshot-ttl'),
       'snapshot-key': asString('snapshot-key'),
       'snapshot-restore-keys': asString('snapshot-restore-keys'),
       'snapshot-paths': asString('snapshot-paths'),
     };
-    if (kind === 'gradle') return parseSnapshotConfig(explicit);
-    const config = projectSnapshotConfig(explicit, this.snapshotProjectPath ?? process.cwd());
+    const config = projectSnapshotConfig(explicit, this.snapshotProjectPath ?? process.cwd(), kind);
     if (!parseSnapshotConfig(explicit) && !explicit['no-snapshot']) {
       this.info(
         config?.key ?
@@ -1095,7 +1092,7 @@ export abstract class BaseCommand extends Command {
    */
   protected async applyBuildCacheToTarget(
     target: { id: string },
-    cache: XcodeCacheConfig | undefined,
+    cache: BuildSnapshotConfig | undefined,
     kind: SnapshotKind = 'xcode',
   ): Promise<void> {
     if (!cache || this.wasCreatedThisRun(target.id)) {
@@ -1108,8 +1105,16 @@ export abstract class BaseCommand extends Command {
         : `Disk snapshot: instance ${target.id} already exists, so its restore keys and paths stay as they were created.`,
       );
     }
-    if (cache.key) {
-      await this.bindCacheKey(target.id, cache.key, kind);
+    let key = cache.key;
+    if (!key && cache.ttlSeconds) {
+      const state =
+        kind === 'gradle' ?
+          await this.client.gradleInstances.getSnapshot(target.id)
+        : await this.client.xcodeInstances.getCache(target.id);
+      key = state.config?.key ?? this.cacheConfigFromFlags(kind)?.key;
+    }
+    if (key) {
+      await this.bindCacheKey(target.id, key, kind, cache.ttlSeconds);
     }
   }
 
@@ -1335,12 +1340,18 @@ export abstract class BaseCommand extends Command {
    * only at termination, possibly long after this process is gone, so the key has to live on
    * the instance rather than in this invocation.
    */
-  protected async bindCacheKey(instanceId: string, key: string, kind: SnapshotKind = 'xcode'): Promise<void> {
+  protected async bindCacheKey(
+    instanceId: string,
+    key: string,
+    kind: SnapshotKind = 'xcode',
+    ttlSeconds?: number,
+  ): Promise<void> {
+    const options = ttlSeconds === undefined ? undefined : { body: { key, ttlSeconds } };
     try {
       if (kind === 'gradle') {
-        await this.client.gradleInstances.bindSnapshotKey(instanceId, key);
+        await this.client.gradleInstances.bindSnapshotKey(instanceId, key, options);
       } else {
-        await this.client.xcodeInstances.bindCacheKey(instanceId, key);
+        await this.client.xcodeInstances.bindCacheKey(instanceId, key, options);
       }
       this.info(`Disk snapshot: publishing this workspace under ${key} when the instance terminates.`);
     } catch (err) {

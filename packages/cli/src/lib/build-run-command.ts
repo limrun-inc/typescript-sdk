@@ -2,6 +2,8 @@ import { secretEnvFlags, secretFileFlags } from './secret-env-flags';
 import { parseSecretEnv, parseSecretFiles } from './secret-env';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../base-command';
+import { buildSnapshotFlags, snapshotFlags } from './cache-flags';
+import { parseSnapshotConfig } from './cache';
 import { syncFlags, syncOptionsFromFlags } from './sync-flags';
 import { syncBuildProject, streamBuildCommand } from './build-command-helpers';
 import { parseEnvEntries } from './env-entries';
@@ -32,6 +34,7 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
       ...secretEnvFlags,
       ...secretFileFlags,
       ...syncFlags,
+      ...(platform === 'gradle' ? buildSnapshotFlags : snapshotFlags),
       id: Flags.string({
         description: `${platform} instance ID to run on. Defaults to the most recent standalone ${platform} target.`,
       }),
@@ -69,6 +72,8 @@ export function buildRunCommand(platform: 'xcode' | 'gradle'): typeof BaseComman
 
       await this.withAuth(async () => {
         const { target, client } = await this.resolveBuildToolClient(platform, flags.id);
+        const snapshot = parseSnapshotConfig(flags);
+        if (snapshot) await this.applyBuildCacheToTarget(target, snapshot, platform);
         const envFromSecret = parseSecretEnv(flags['env-from-secret']);
         const fileFromSecret = parseSecretFiles(flags['file-from-secret']);
         await this.ensureSecretPermissions(target.id, envFromSecret, fileFromSecret);

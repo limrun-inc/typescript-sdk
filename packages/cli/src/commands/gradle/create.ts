@@ -8,7 +8,7 @@ import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { type GradleInstanceCreateParams } from '@limrun/api/resources/gradle-instances';
 import { gradleSnapshotConfig, wantsRestore } from '../../lib/cache';
-import { gradleSnapshotFlags } from '../../lib/cache-flags';
+import { buildSnapshotFlags } from '../../lib/cache-flags';
 
 export default class GradleCreate extends BaseCommand {
   static summary = 'Create a new gradle instance';
@@ -26,7 +26,7 @@ export default class GradleCreate extends BaseCommand {
     ...BaseCommand.permissionFlags,
     ...secretEnvFlags,
     ...secretFileFlags,
-    ...gradleSnapshotFlags,
+    ...buildSnapshotFlags,
     'display-name': Flags.string({
       description: 'Human-friendly display name shown in listings and the console',
     }),

@@ -694,7 +694,7 @@ failure, the CLI warns and continues with a cold workspace. The instance stays
 available and the build can regenerate its dependencies and outputs. A lost
 snapshot-status connection also leaves the build free to continue.
 
-New Xcode instances automatically restore and save a disk snapshot using the
+New Xcode and Gradle instances created by the CLI automatically restore and save a disk snapshot using the
 Git origin host/repository and project subdirectory, for example
 `github.com/acme/monorepo/apps/ios`. SSH and HTTPS origins produce the same key;
 branches and commits share it. The key alone controls both restore and save.
@@ -707,6 +707,10 @@ directory. `lim run` uses its detected project, and `lim ios create --xcode`
 uses the current directory. Existing instances keep their original snapshot settings. Without
 a usable Git origin, pass `--snapshot-key` explicitly. Use `--no-snapshot` to
 create an uncached instance.
+
+Pass `--snapshot-ttl 7d` to expire a saved Xcode or Gradle snapshot seven days
+after publication. Each save starts a new TTL. A restore does not extend it.
+Omitting the flag on a new instance uses the storage bucket's retention policy.
 
 From the project directory:
 

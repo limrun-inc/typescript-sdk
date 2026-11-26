@@ -141,7 +141,7 @@ test('existing instances are neither replaced nor rebound by the default', async
   expect(cmd.bind).not.toHaveBeenCalled();
   expect(projectSnapshotKey).not.toHaveBeenCalled();
   await cmd.apply({ key: 'explicit' });
-  expect(cmd.bind).toHaveBeenCalledWith(target.id, 'explicit');
+  expect(cmd.bind).toHaveBeenCalledWith(target.id, 'explicit', undefined);
 });
 
 test.each([XcodeBuild, XcodeTest, XcodeSync])(
