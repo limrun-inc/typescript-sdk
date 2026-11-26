@@ -13,6 +13,7 @@ import { registerCreatedInstance } from '../../lib/config';
 import { formatSimulatorAttachResult, simulatorAttachJson } from '../../lib/simulator-attach';
 import { formatDurationMs } from '../../lib/duration';
 import { parseDurationSeconds } from '../../lib/duration';
+import { parseTunnelHeaders } from '../../lib/tunnel-headers';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { Ios, type SimulatorAttachResult } from '@limrun/api';
 import { type IosInstanceCreateParams } from '@limrun/api/resources/ios-instances';
@@ -36,6 +37,7 @@ export default class IosCreate extends BaseCommand {
     '<%= config.bin %> ios create --attach <xcode-instance-ID>',
     '<%= config.bin %> ios create --force-bundle-id com.example.myapp',
     '<%= config.bin %> ios create --tunnel staging',
+    "<%= config.bin %> ios create --tunnel staging --tunnel-header 'X-Run-Id: run-4812'",
     "<%= config.bin %> ios create --blocked-domain facebook.com --blocked-domain '*.facebook.com'",
     '<%= config.bin %> ios create --record --events --app-logs com.example.myapp --persist-ttl 24h',
     '<%= config.bin %> ios create --perf --persist-ttl 24h',
@@ -80,6 +82,12 @@ export default class IosCreate extends BaseCommand {
       description:
         'Name of a private tunnel, created in the console (Network) and run with lim tunnel run, that the ' +
         'instance must attach to before it becomes ready.',
+    }),
+    'tunnel-header': Flags.string({
+      description:
+        "HTTP header, as 'Name: value', that the instance adds to every inspected request it sends " +
+        'through a tunnel, next to Limrun-Instance-Id. Repeat to add more.',
+      multiple: true,
     }),
     'blocked-domain': Flags.string({
       description:
@@ -188,8 +196,14 @@ export default class IosCreate extends BaseCommand {
       this.error('Xcode target argument requires --attach.');
     }
     const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events || flags.perf;
-    // Parsed before the instance is created so a bad TTL fails before billing.
+    // Parsed before the instance is created so a bad TTL or header fails before billing.
     const captureTtlSeconds = wantsCaptures ? parseDurationSeconds(flags['persist-ttl']) : 0;
+    let tunnelHeaders: Record<string, string> | undefined;
+    try {
+      tunnelHeaders = parseTunnelHeaders(flags['tunnel-header']);
+    } catch (error) {
+      this.error(error instanceof Error ? error.message : String(error));
+    }
     const hasKeychainInitialAssets = Boolean(flags.keychain?.length || flags['keychain-url']?.length);
     await this.withAuth(async () => {
       const attachTarget = flags.attach ? await this.resolveXcodeTarget(args.xcodeId) : undefined;
@@ -262,6 +276,7 @@ export default class IosCreate extends BaseCommand {
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags['force-bundle-id']) params.spec!.forceBundleId = flags['force-bundle-id'];
       if (flags.tunnel) params.spec!.tunnel = flags.tunnel;
+      if (tunnelHeaders) params.spec!.tunnelHeaders = tunnelHeaders;
       if (flags['blocked-domain']) params.spec!.blockedDomains = flags['blocked-domain'];
 
       const labels = parseLabels(flags.label);

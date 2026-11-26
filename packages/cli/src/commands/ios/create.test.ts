@@ -38,6 +38,22 @@ test('omits the tunnel without --tunnel', async () => {
   expect(create).toHaveBeenCalledWith(expect.objectContaining({ spec: { role: { permissions: [] } } }));
 });
 
+test('--tunnel-header adds the headers to the instance spec', async () => {
+  const { command, create } = setup({ tunnel: 'staging', 'tunnel-header': ['X-Run-Id: run-4812'] });
+  await command.run();
+  expect(create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      spec: { role: { permissions: [] }, tunnel: 'staging', tunnelHeaders: { 'X-Run-Id': 'run-4812' } },
+    }),
+  );
+});
+
+test('omits tunnelHeaders without --tunnel-header', async () => {
+  const { command, create } = setup({ tunnel: 'staging' });
+  await command.run();
+  expect(create.mock.calls[0][0].spec).not.toHaveProperty('tunnelHeaders');
+});
+
 test('restores keychain assets by name and URL without an encryption key', async () => {
   const { command, create } = setup({
     keychain: ['keychain/login.tar.gz'],

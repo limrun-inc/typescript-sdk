@@ -10,6 +10,7 @@ import { BaseCommand } from '../../base-command';
 import { parseLabels } from '../../lib/formatting';
 import { registerCreatedInstance } from '../../lib/config';
 import { parseDurationSeconds } from '../../lib/duration';
+import { parseTunnelHeaders } from '../../lib/tunnel-headers';
 import { startPersistedCaptures } from '../../lib/session-captures';
 import { type AndroidInstanceCreateParams } from '@limrun/api/resources/android-instances';
 import { instanceToken } from '@limrun/api/instance-token';
@@ -42,6 +43,7 @@ export default class AndroidCreate extends BaseCommand {
     '<%= config.bin %> android create --os-version 15 --model tablet',
     '<%= config.bin %> android create --jurisdiction us --label env=dev',
     '<%= config.bin %> android create --tunnel staging',
+    "<%= config.bin %> android create --tunnel staging --tunnel-header 'X-Run-Id: run-4812'",
     "<%= config.bin %> android create --blocked-domain facebook.com --blocked-domain '*.facebook.com'",
     '<%= config.bin %> android create --no-connect',
     '<%= config.bin %> android create --daemon=false',
@@ -98,6 +100,12 @@ export default class AndroidCreate extends BaseCommand {
       description:
         'Name of a private tunnel, created in the console (Network) and run with lim tunnel run, that the ' +
         'instance must attach to before it becomes ready.',
+    }),
+    'tunnel-header': Flags.string({
+      description:
+        "HTTP header, as 'Name: value', that the instance adds to every inspected request it sends " +
+        'through a tunnel, next to Limrun-Instance-Id. Repeat to add more.',
+      multiple: true,
     }),
     'blocked-domain': Flags.string({
       description:
@@ -165,8 +173,14 @@ export default class AndroidCreate extends BaseCommand {
     }
     this.setParsedFlags(flags);
     const wantsCaptures = flags.record || Boolean(flags['app-logs']) || flags.events;
-    // Parsed before the instance is created so a bad TTL fails before billing.
+    // Parsed before the instance is created so a bad TTL or header fails before billing.
     const captureTtlSeconds = wantsCaptures ? parseDurationSeconds(flags['persist-ttl']) : 0;
+    let tunnelHeaders: Record<string, string> | undefined;
+    try {
+      tunnelHeaders = parseTunnelHeaders(flags['tunnel-header']);
+    } catch (error) {
+      this.error(error instanceof Error ? error.message : String(error));
+    }
 
     await this.withAuth(async () => {
       // Upload local files first. Uploaded files are installed via their
@@ -226,6 +240,7 @@ export default class AndroidCreate extends BaseCommand {
       if (flags['hard-timeout']) params.spec!.hardTimeout = flags['hard-timeout'];
       if (flags['inactivity-timeout']) params.spec!.inactivityTimeout = flags['inactivity-timeout'];
       if (flags.tunnel) params.spec!.tunnel = flags.tunnel;
+      if (tunnelHeaders) params.spec!.tunnelHeaders = tunnelHeaders;
       if (flags['blocked-domain']) params.spec!.blockedDomains = flags['blocked-domain'];
 
       const labels = parseLabels(flags.label);
