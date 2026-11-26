@@ -63,6 +63,8 @@ export type FolderSyncOptions = {
   additionalFiles?: AdditionalFileSyncEntry[];
   /** Force transport content encoding. Android APK sync uses identity because APKs are already compressed. */
   compression?: 'zstd' | 'gzip' | 'identity';
+  /** Folder the files sync into on the instance. Defaults to the local folder's name. */
+  rootName?: string;
   /**
    * Called after every successful sync: the one-shot sync, the initial sync
    * in watch mode, and each watch-triggered re-sync.
@@ -741,7 +743,7 @@ async function syncStagedFolder(
   const fileMap = new Map(allFiles.map((f) => [f.path, f]));
 
   const syncId = genId('sync');
-  const rootName = path.basename(path.resolve(localFolderPath));
+  const rootName = opts.rootName ?? path.basename(path.resolve(localFolderPath));
   const preferredCompression: 'zstd' | 'gzip' | 'identity' =
     opts.compression ?? ((zlib as any).createZstdCompress ? 'zstd' : 'gzip');
 
