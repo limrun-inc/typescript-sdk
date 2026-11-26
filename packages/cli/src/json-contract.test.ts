@@ -2,6 +2,7 @@ import { openInBrowser } from './lib/browser';
 import { registerCreatedInstance } from './lib/config';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
+import { startDetached } from './lib/detached';
 import {
   ensureDaemonSession,
   getAndroidInstanceClient,
@@ -17,6 +18,7 @@ import { streamBuildCommand } from './lib/build-command-helpers';
 jest.mock('@limrun/api', () => ({ ...jest.requireActual('@limrun/api'), createInstanceClient: jest.fn() }));
 
 jest.mock('./lib/browser', () => ({ openInBrowser: jest.fn() }));
+jest.mock('./lib/detached', () => ({ ...jest.requireActual('./lib/detached'), startDetached: jest.fn() }));
 
 jest.mock('child_process', () => ({ ...jest.requireActual('child_process'), spawn: jest.fn() }));
 jest.mock('./lib/config', () => ({
@@ -117,6 +119,7 @@ beforeEach(() => {
   jest.mocked(daemon.listActiveSessions).mockReturnValue([]);
   jest.mocked(daemon.isDaemonRunning).mockReturnValue(false);
   jest.mocked(spawn).mockReturnValue({ pid: 11656, unref: jest.fn() } as never);
+  jest.mocked(startDetached).mockResolvedValue({ pid: 11656, logPath: '/tmp/connect.log', ready: {} });
 });
 afterEach(() => {
   jest.restoreAllMocks();
@@ -362,12 +365,12 @@ test.each([true, false])('Android create emits the API resource with connect=%s'
   expect(JSON.parse(stdout)).toEqual({ ...instance, consoleUrl: 'https://console.example.test' });
   expect(openInBrowser).not.toHaveBeenCalled();
   expect(stderr).toBe('');
-  expect(spawn).toHaveBeenCalledTimes(connect ? 1 : 0);
+  expect(startDetached).toHaveBeenCalledTimes(connect ? 1 : 0);
 });
 
 test('Android create retains human tunnel instructions without --json', async () => {
   await command('android/create', {}, { json: false, connect: true, daemon: true }).run();
-  expect(stdout).toContain('ADB tunnel starting in background (PID 11656).');
+  expect(stdout).toContain('ADB tunnel running in background (PID 11656, log /tmp/connect.log).');
   expect(stdout).toContain(`lim android delete ${instance.metadata.id}`);
 });
 
