@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { createDuoModel } from './duo-model';
 import type { RemoteControlModel } from './remote-control';
-import { createStudioEnvironment } from './studio-environment';
+import { createDeviceStage, useStageView, type StageLighting } from './device-stage';
 import { duoFoldAngle } from './duo-fold-timing';
 import { hardwareLayout, hardwareHoverEdge } from './duo-hardware';
 import { DuoControls, DuoHardwareIcon } from './duo-controls';
@@ -36,6 +36,13 @@ export interface DuoFrameProps {
 
 type View = 'front' | 'book' | 'table' | 'back';
 
+const LIGHTING: StageLighting = {
+  environment: 0.4,
+  hemisphere: 1.1,
+  key: { intensity: 2.4, position: [-100, 180, 260] },
+  rim: { intensity: 0.8, position: [200, -40, -200] },
+};
+
 /** A procedural titanium frame. Each glass panel carries its own native video texture. */
 export default function DuoFrame(props: DuoFrameProps) {
   const host = useRef<HTMLDivElement>(null);
@@ -50,13 +57,16 @@ export default function DuoFrame(props: DuoFrameProps) {
   );
   const angleRef = useRef(angle);
   angleRef.current = angle;
-  const [view, setView] = useState<View>('front');
-  const viewRevision = useRef(0);
-  const viewRef = useRef(view);
-  viewRef.current = view;
-  const [positionLocked, setPositionLocked] = useState(false);
-  const lockedRef = useRef(positionLocked);
-  lockedRef.current = positionLocked;
+  const {
+    view,
+    viewRef,
+    chooseView,
+    locked: positionLocked,
+    lockedRef,
+    setLocked: setPositionLocked,
+    orbit,
+    drag: turn,
+  } = useStageView<View>('front');
   const invalidateFrame = useRef<() => void>(() => undefined);
 
   useEffect(() => {
@@ -65,38 +75,32 @@ export default function DuoFrame(props: DuoFrameProps) {
 
   useEffect(() => {
     const container = host.current;
-    if (!container || !props.outer || !props.inner) return;
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    } catch {
+    const outer = props.outer;
+    const inner = props.inner;
+    if (!container || !outer || !inner) return;
+    const camera = new THREE.OrthographicCamera(-150, 150, 150, -150, 1, 2000);
+    let aspect = 1;
+    camera.position.set(0, 0, 340);
+    const stage = createDeviceStage({
+      container,
+      videos: [outer, inner],
+      maxPixelRatio: 1.5,
+      lighting: LIGHTING,
+      resize: (width, height) => {
+        aspect = width / height;
+        camera.updateProjectionMatrix();
+      },
+      frame: (time, dt) => animate(time, dt),
+    });
+    if (!stage) {
       setError('3D rendering is unavailable in this browser. Enable WebGL to use the folding frame.');
       latest.current.onReady?.();
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1;
-    renderer.setClearColor(0x000000, 0);
-    container.appendChild(renderer.domElement);
-    const scene = new THREE.Scene();
-    const camera = new THREE.OrthographicCamera(-150, 150, 150, -150, 1, 2000);
-    let aspect = 1;
-    camera.position.set(0, 0, 340);
+    const { renderer, scene, invalidate } = stage;
     const root = new THREE.Group();
-    const environmentMap = createStudioEnvironment(renderer);
-    scene.environment = environmentMap.texture;
-    scene.environmentIntensity = 0.4;
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xc1c8d1, 1.1));
-    const key = new THREE.DirectionalLight(0xffffff, 2.4);
-    key.position.set(-100, 180, 260);
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(0xe4edff, 0.8);
-    rim.position.set(200, -40, -200);
-    scene.add(rim);
-    const outerTexture = new THREE.VideoTexture(props.outer);
-    const innerTexture = new THREE.VideoTexture(props.inner);
+    const outerTexture = new THREE.VideoTexture(outer);
+    const innerTexture = new THREE.VideoTexture(inner);
     for (const texture of [outerTexture, innerTexture]) {
       texture.colorSpace = THREE.SRGBColorSpace;
       texture.minFilter = THREE.LinearFilter;
@@ -104,7 +108,7 @@ export default function DuoFrame(props: DuoFrameProps) {
     }
 
     let disposed = false;
-    const model = createDuoModel(outerTexture, innerTexture, environmentMap.texture);
+    const model = createDuoModel(outerTexture, innerTexture, stage.environment);
     const { device } = model;
     // A load that outlives this effect, for a frame since rebuilt or gone, reports nothing.
     if (props.model)
@@ -138,22 +142,13 @@ export default function DuoFrame(props: DuoFrameProps) {
           clientY: number;
         }
       | undefined;
-    let yaw = 0,
-      pitch = 0;
-    let previousViewRevision = viewRevision.current;
     let renderedAngle = angleRef.current;
     let foldFrom = renderedAngle;
     let foldTarget = renderedAngle;
     let foldStartedAt = 0;
     let foldDragging = false;
     let renderedYaw = 0;
-    let animation = 0;
-    let visible = true;
-    const invalidate = () => {
-      if (!animation && visible && !document.hidden && !disposed) animation = requestAnimationFrame(animate);
-    };
     invalidateFrame.current = invalidate;
-    let lastTime = 0;
     let layout: ReturnType<typeof hardwareLayout> | undefined;
     let hoveredEdge: ReturnType<typeof hardwareHoverEdge>;
     const iconButton = (target: EventTarget | null) =>
@@ -236,8 +231,7 @@ export default function DuoFrame(props: DuoFrameProps) {
           latest.current.touch(2, hit.screenId, hit.x, hit.y);
         }
       } else if (!lockedRef.current) {
-        yaw += (event.clientX - drag.clientX) * 0.008;
-        pitch = THREE.MathUtils.clamp(pitch + (event.clientY - drag.clientY) * 0.008, -1.4, 1.4);
+        turn(event.clientX - drag.clientX, event.clientY - drag.clientY, 1.4);
       }
       drag.clientX = event.clientX;
       drag.clientY = event.clientY;
@@ -315,31 +309,10 @@ export default function DuoFrame(props: DuoFrameProps) {
     container.addEventListener('focusin', focus);
     container.addEventListener('focusout', focusOut);
     window.addEventListener('blur', blur);
-    const resize = () => {
-      const w = container.clientWidth,
-        h = container.clientHeight;
-      if (!w || !h) return;
-      aspect = w / h;
-
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h, false);
-      invalidate();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
     const bounds = new THREE.Box3();
     const center = new THREE.Vector3();
     const extent = new THREE.Vector3();
-    const animate = (time: number) => {
-      animation = 0;
-      if (disposed || !visible || document.hidden) return;
-      const dt = Math.min((time - lastTime) / 1000, 0.05);
-      lastTime = time;
-      if (viewRevision.current !== previousViewRevision) {
-        yaw = 0;
-        pitch = 0;
-        previousViewRevision = viewRevision.current;
-      }
+    const animate = (time: number, dt: number) => {
       if (foldTarget !== angleRef.current) {
         foldFrom = renderedAngle;
         foldTarget = angleRef.current;
@@ -360,11 +333,11 @@ export default function DuoFrame(props: DuoFrameProps) {
       if (Math.abs(renderedYaw - baseYaw) < 0.001) renderedYaw = baseYaw;
       // Camera orbit stays independent of the native device orientation.
       root.rotation.set(
-        pitch +
+        orbit.pitch +
           (viewRef.current === 'table' ? -0.35
           : viewRef.current === 'book' ? 0.2
           : 0),
-        yaw + (viewRef.current === 'book' ? -0.2 : 0),
+        orbit.yaw + (viewRef.current === 'book' ? -0.2 : 0),
         0,
       );
       // Apply screen rotation after turning the device over so the cover remains upright.
@@ -406,45 +379,20 @@ export default function DuoFrame(props: DuoFrameProps) {
         element.style.setProperty('--duo-hardware-icon-size', `${layout.iconSize}px`);
         element.dataset.visible = String(guide.edge === hoveredEdge);
       }
-      if (
-        motion.current ||
+      return (
+        !!motion.current ||
         renderedAngle !== angleRef.current ||
         renderedYaw !== baseYaw ||
         camera.top !== halfHeight ||
         buttonsMoving
-      )
-        invalidate();
+      );
     };
-    const videoCallbacks = new Map<HTMLVideoElement, number>();
-    for (const video of [props.outer, props.inner]) {
-      const frame = () => {
-        if (disposed) return;
-        invalidate();
-        videoCallbacks.set(video, video.requestVideoFrameCallback(frame));
-      };
-      if ('requestVideoFrameCallback' in video)
-        videoCallbacks.set(video, video.requestVideoFrameCallback(frame));
-    }
-    const fallback =
-      !('requestVideoFrameCallback' in props.outer) ? window.setInterval(invalidate, 1000 / 30) : undefined;
-    const intersection = new IntersectionObserver(([entry]) => {
-      visible = !!entry?.isIntersecting;
-      invalidate();
-    });
-    intersection.observe(container);
-    document.addEventListener('visibilitychange', invalidate);
-    resize();
+    stage.start();
     return () => {
       disposed = true;
       invalidateFrame.current = () => undefined;
-      intersection.disconnect();
-      document.removeEventListener('visibilitychange', invalidate);
-      for (const [video, id] of videoCallbacks) video.cancelVideoFrameCallback(id);
-      clearInterval(fallback);
       up();
       buttons.release();
-      cancelAnimationFrame(animation);
-      observer.disconnect();
       window.removeEventListener('blur', blur);
       container.removeEventListener('pointerleave', leave);
       container.removeEventListener('pointerdown', down);
@@ -456,13 +404,10 @@ export default function DuoFrame(props: DuoFrameProps) {
       container.removeEventListener('keyup', keyUp);
       container.removeEventListener('focusin', focus);
       container.removeEventListener('focusout', focusOut);
-      renderer.dispose();
-      renderer.forceContextLoss();
       model.dispose();
       outerTexture.dispose();
       innerTexture.dispose();
-      environmentMap.dispose();
-      renderer.domElement.remove();
+      stage.dispose();
     };
   }, [props.outer, props.inner, props.model]);
 
@@ -517,8 +462,7 @@ export default function DuoFrame(props: DuoFrameProps) {
             disabled={props.watchOnly && (value === 'book' || value === 'table')}
             aria-pressed={view === value}
             onClick={() => {
-              viewRevision.current++;
-              setView(value);
+              chooseView(value);
               invalidateFrame.current();
               if (value === 'book') {
                 void props

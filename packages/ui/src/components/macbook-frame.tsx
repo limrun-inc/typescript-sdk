@@ -12,7 +12,7 @@ import {
   streamPoint,
   type MacbookKind,
 } from './macbook-geometry';
-import { createStudioEnvironment } from './studio-environment';
+import { createDeviceStage, useStageView, type StageLighting } from './device-stage';
 import { loadModel as loadGltf } from './model-source';
 import type { RemoteControlModel } from './remote-control';
 
@@ -51,6 +51,12 @@ const VIEWS: Record<View, { yaw: number; pitch: number; label: string }> = {
   side: { yaw: -1.15, pitch: 0.16, label: 'Side' },
 };
 const FOV = 28;
+const LIGHTING: StageLighting = {
+  environment: 0.45,
+  hemisphere: 1.0,
+  key: { intensity: 2.2, position: [-120, 220, 260] },
+  rim: { intensity: 0.7, position: [220, 40, -220] },
+};
 
 function material(kind: MacbookKind, screen: THREE.Material): THREE.Material {
   const side = THREE.DoubleSide;
@@ -100,13 +106,16 @@ export default function MacbookFrame(props: MacbookFrameProps) {
   const [shown, setShown] = useState(false);
   // The lid opens once when the MacBook first appears, not again when a new stream shape rebuilds it.
   const opened = useRef(false);
-  const [view, setView] = useState<View>('front');
-  const viewRef = useRef(view);
-  viewRef.current = view;
-  const viewRevision = useRef(0);
-  const [positionLocked, setPositionLocked] = useState(false);
-  const lockedRef = useRef(positionLocked);
-  lockedRef.current = positionLocked;
+  const {
+    view,
+    viewRef,
+    chooseView,
+    locked: positionLocked,
+    lockedRef,
+    setLocked: setPositionLocked,
+    orbit,
+    drag: turn,
+  } = useStageView<View>('front');
   const invalidateFrame = useRef<() => void>(() => undefined);
   // The lid's opening in degrees from closed: where the slider puts it, where it is drawn, the
   // slider's value, and the eased move under way, if any.
@@ -141,32 +150,27 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       latest.current.onReady?.();
     };
     setError(undefined);
-    let renderer: THREE.WebGLRenderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    } catch {
+    const camera = new THREE.PerspectiveCamera(FOV, 1, 10, 4000);
+    let aspect = 1;
+    const stage = createDeviceStage({
+      container,
+      videos: [video],
+      maxPixelRatio: 2,
+      lighting: LIGHTING,
+      resize: (width, height) => {
+        aspect = width / height;
+        camera.aspect = aspect;
+        camera.updateProjectionMatrix();
+      },
+      frame: (time, dt) => animate(time, dt),
+    });
+    if (!stage) {
       setError('3D rendering is unavailable in this browser. Enable WebGL to use the 3D MacBook.');
       reveal();
       return;
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.setClearColor(0x000000, 0);
-    container.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    const environmentMap = createStudioEnvironment(renderer);
-    scene.environment = environmentMap.texture;
-    scene.environmentIntensity = 0.45;
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xc1c8d1, 1.0));
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
-    key.position.set(-120, 220, 260);
-    scene.add(key);
-    const rim = new THREE.DirectionalLight(0xe4edff, 0.7);
-    rim.position.set(220, 40, -220);
-    scene.add(rim);
-    const camera = new THREE.PerspectiveCamera(FOV, 1, 10, 4000);
+    const { renderer, scene, invalidate } = stage;
+    let disposed = false;
 
     const screenTexture = new THREE.VideoTexture(video);
     screenTexture.colorSpace = THREE.SRGBColorSpace;
@@ -338,19 +342,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     let drag:
       | { pointer: number; kind: 'screen' | 'orbit'; clientX: number; clientY: number; x: number; y: number }
       | undefined;
-    let yaw = 0;
-    let pitch = 0;
     let renderedYaw = VIEWS[viewRef.current].yaw;
     let renderedPitch = VIEWS[viewRef.current].pitch;
-    let previousRevision = viewRevision.current;
-    let aspect = 1;
-    let animation = 0;
-    let lastTime = 0;
-    let disposed = false;
-    let visible = true;
-    const invalidate = () => {
-      if (!animation && visible && !document.hidden && !disposed) animation = requestAnimationFrame(animate);
-    };
     invalidateFrame.current = invalidate;
 
     // The point of the screen under the pointer, 0 to 1 from its top left, if it is on the screen.
@@ -404,8 +397,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         }
         latest.current.pointer('move', drag.x, drag.y, event.buttons);
       } else {
-        yaw += (event.clientX - drag.clientX) * 0.008;
-        pitch = THREE.MathUtils.clamp(pitch + (event.clientY - drag.clientY) * 0.008, -1.2, 1.2);
+        turn(event.clientX - drag.clientX, event.clientY - drag.clientY, 1.2);
       }
       drag.clientX = event.clientX;
       drag.clientY = event.clientY;
@@ -456,29 +448,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     container.addEventListener('focusout', blur);
     window.addEventListener('blur', blur);
 
-    const resize = () => {
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      if (!w || !h) return;
-      aspect = w / h;
-      camera.aspect = aspect;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h, false);
-      invalidate();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-
-    const animate = (time: number) => {
-      animation = 0;
-      if (disposed || !visible || document.hidden) return;
-      const dt = Math.min((time - lastTime) / 1000, 0.05);
-      lastTime = time;
-      if (viewRevision.current !== previousRevision) {
-        yaw = 0;
-        pitch = 0;
-        previousRevision = viewRevision.current;
-      }
+    const animate = (time: number, dt: number) => {
       const target = VIEWS[viewRef.current];
       // Only the lid moves as it opens or closes; the MacBook and the view stay where they are.
       // An eased move runs its course, and the slider's lid follows it closely.
@@ -496,8 +466,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         else lidMoving = true;
       }
       lid.rotation.x = lidRotation(renderedLid.current);
-      const targetYaw = target.yaw + yaw;
-      const targetPitch = target.pitch + pitch;
+      const targetYaw = target.yaw + orbit.yaw;
+      const targetPitch = target.pitch + orbit.pitch;
       renderedYaw = THREE.MathUtils.damp(renderedYaw, targetYaw, 10, dt);
       renderedPitch = THREE.MathUtils.damp(renderedPitch, targetPitch, 10, dt);
       if (Math.abs(renderedYaw - targetYaw) < 0.0005) renderedYaw = targetYaw;
@@ -517,38 +487,15 @@ export default function MacbookFrame(props: MacbookFrameProps) {
         revealOnFrame = false;
         reveal();
       }
-      if (lidMoving || renderedYaw !== targetYaw || renderedPitch !== targetPitch || distance !== fit)
-        invalidate();
+      return lidMoving || renderedYaw !== targetYaw || renderedPitch !== targetPitch || distance !== fit;
     };
-    // The screen repaints with each new frame of the stream.
-    let videoCallback: number | undefined;
-    const frame = () => {
-      if (disposed) return;
-      invalidate();
-      videoCallback = video.requestVideoFrameCallback(frame);
-    };
-    if ('requestVideoFrameCallback' in video) videoCallback = video.requestVideoFrameCallback(frame);
-    const fallback =
-      'requestVideoFrameCallback' in video ? undefined : window.setInterval(invalidate, 1000 / 30);
-    const intersection = new IntersectionObserver(([entry]) => {
-      visible = !!entry?.isIntersecting;
-      invalidate();
-    });
-    intersection.observe(container);
-    document.addEventListener('visibilitychange', invalidate);
-    resize();
+    stage.start();
     if (!modelSource) show();
 
     return () => {
       disposed = true;
       invalidateFrame.current = () => undefined;
       up();
-      cancelAnimationFrame(animation);
-      if (videoCallback !== undefined) video.cancelVideoFrameCallback(videoCallback);
-      clearInterval(fallback);
-      intersection.disconnect();
-      observer.disconnect();
-      document.removeEventListener('visibilitychange', invalidate);
       for (const type of contained) container.removeEventListener(type, contain);
       container.removeEventListener('pointerdown', down);
       container.removeEventListener('pointermove', move);
@@ -562,10 +509,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       window.removeEventListener('blur', blur);
       for (const resource of [...resources, ...builtIn]) resource.dispose();
       screenTexture.dispose();
-      environmentMap.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss();
-      renderer.domElement.remove();
+      stage.dispose();
     };
   }, [props.video, props.aspect, props.model]);
 
@@ -618,8 +562,7 @@ export default function MacbookFrame(props: MacbookFrameProps) {
               type="button"
               aria-pressed={view === value}
               onClick={() => {
-                viewRevision.current++;
-                setView(value);
+                chooseView(value);
               }}
             >
               {VIEWS[value].label}
