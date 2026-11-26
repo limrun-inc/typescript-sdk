@@ -33,10 +33,10 @@ async function launchAppWithArgument(
 export default class IosLaunchApp extends BaseCommand {
   static summary = 'Launch an app on a running iOS instance';
   static description =
-    'Launch an installed app on a running iOS instance by bundle identifier and stream its logs until the app exits or the command is interrupted. Use `--detach` to exit immediately after the launch instead. Choose `ForegroundIfRunning` to bring an already-running app to the front or `RelaunchIfRunning` to restart it. Use `--runtime detox` to launch with the Limrun-managed Detox runtime.';
+    'Launch an installed app on a running iOS instance by bundle identifier and return. Use `--no-detach` to stream its logs until the app exits or the command is interrupted. Choose `ForegroundIfRunning` to bring an already-running app to the front or `RelaunchIfRunning` to restart it. Use `--runtime detox` to launch with the Limrun-managed Detox runtime.';
   static examples = [
     '<%= config.bin %> ios launch-app com.example.app',
-    '<%= config.bin %> ios launch-app com.example.app --detach',
+    '<%= config.bin %> ios launch-app com.example.app --no-detach',
     '<%= config.bin %> ios launch-app com.example.app --env API_URL=https://example.com --env FEATURE_FLAG=1',
     '<%= config.bin %> ios launch-app com.example.app --env API_URL=https://example.com --env-from-secret API_TOKEN=testing/api-token',
     '<%= config.bin %> ios launch-app com.example.app --mode RelaunchIfRunning --id <instance-ID>',
@@ -61,8 +61,10 @@ export default class IosLaunchApp extends BaseCommand {
     }),
     detach: Flags.boolean({
       char: 'd',
-      description: 'Exit right after launching instead of streaming app logs',
-      default: false,
+      description:
+        'Exit right after launching instead of streaming app logs. Use --no-detach to keep watching.',
+      default: true,
+      allowNo: true,
     }),
     mode: Flags.string({
       description:
@@ -163,7 +165,7 @@ export default class IosLaunchApp extends BaseCommand {
         if (flags.json) this.outputEvent({ type: 'launched', ...launchResult });
         if (!flags.json)
           this.logToStderr(
-            `Launched ${args.bundleId}. Streaming app logs until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip streaming.`,
+            `Launched ${args.bundleId}. Streaming app logs until the app exits; press Ctrl+C to stop earlier.`,
           );
 
         await new Promise<void>((resolve) => {

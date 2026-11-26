@@ -7,10 +7,10 @@ import { formatAppExit } from '../../lib/format-app-exit';
 export default class AndroidLaunchApp extends BaseCommand {
   static summary = 'Launch an app on a running Android instance';
   static description =
-    'Launch an installed app on a running Android instance by package name and watch it until it exits: when the app crashes, ANRs, or stops, the exit reason, crash details, and a recent app log tail are printed. Use `--detach` to exit right after the launch instead. Choose `ForegroundIfRunning` to bring an already-running app to the front or `RelaunchIfRunning` to restart it.';
+    'Launch an installed app on a running Android instance by package name and return. Use `--no-detach` to watch it until it exits: when the app crashes, ANRs, or stops, the exit reason, crash details, and a recent app log tail are printed. Choose `ForegroundIfRunning` to bring an already-running app to the front or `RelaunchIfRunning` to restart it.';
   static examples = [
     '<%= config.bin %> android launch-app com.example.app',
-    '<%= config.bin %> android launch-app com.example.app --detach',
+    '<%= config.bin %> android launch-app com.example.app --no-detach',
     '<%= config.bin %> android launch-app com.example.app --mode RelaunchIfRunning --id <instance-ID>',
   ];
 
@@ -25,8 +25,10 @@ export default class AndroidLaunchApp extends BaseCommand {
     }),
     detach: Flags.boolean({
       char: 'd',
-      description: 'Exit right after launching instead of watching until the app exits',
-      default: false,
+      description:
+        'Exit right after launching instead of watching until the app exits. Use --no-detach to keep watching.',
+      default: true,
+      allowNo: true,
     }),
     mode: Flags.string({
       description:
@@ -76,7 +78,7 @@ export default class AndroidLaunchApp extends BaseCommand {
         if (flags.json) this.outputEvent({ type: 'launched', ...launchResult });
         if (!flags.json)
           this.logToStderr(
-            `Launched ${args.packageName}. Watching until the app exits; press Ctrl+C to stop earlier, or pass --detach to skip watching.`,
+            `Launched ${args.packageName}. Watching until the app exits; press Ctrl+C to stop earlier.`,
           );
 
         await new Promise<void>((resolve) => {

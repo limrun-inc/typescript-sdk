@@ -1,14 +1,12 @@
 import { Args, Flags } from '@oclif/core';
-import { execFileSync, spawn } from 'child_process';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { BaseCommand } from '../../base-command';
-import { probePortOpen } from '../../lib/rbe-session';
+import { inheritedFlags, startDetached } from '../../lib/detached';
 
 const SSH_DISCONNECTED = 'SSH tunnel disconnected. Run lim macos ssh again to reconnect.';
-/** How long a detached tunnel gets to start listening before the command gives up on it. */
-const DETACHED_READY_MS = 30_000;
 
 export default class MacosSsh extends BaseCommand {
   static summary = 'Open an SSH tunnel to a macOS instance';
@@ -41,23 +39,39 @@ export default class MacosSsh extends BaseCommand {
     this.setParsedFlags(flags);
     const { publicKey, publicKeyFile, identity } = this.loadPublicKey(flags['public-key']);
 
+    if (flags.detach) {
+      const id = this.resolveMacosTarget(flags.id).id;
+      const { pid, logPath, ready } = await startDetached({
+        name: `macos-ssh-${id}-${args.port}`,
+        args: [
+          'macos',
+          'ssh',
+          String(args.port),
+          '--id',
+          id,
+          '--public-key',
+          publicKeyFile,
+          ...inheritedFlags(flags),
+        ],
+      });
+      // The child names the key file explicitly, so its command would add -i for a default key.
+      const command = `ssh -p ${args.port}${identity ? ` -i ${identity}` : ''} ${String(
+        ready['user'],
+      )}@localhost`;
+      if (this.isJsonEnabled()) {
+        this.outputJson({ ...ready, command, pid, logPath });
+      } else {
+        this.info(
+          `Forwarding localhost:${args.port} to SSH on ${id} in the background. Stop it with kill ${pid}.`,
+        );
+        this.output(command);
+      }
+      return;
+    }
+
     await this.withAuth(async () => {
       const { id, client } = await this.resolveMacosClient(flags.id);
       const access = await client.enableSsh(publicKey);
-      if (flags.detach) {
-        const command = `ssh -p ${args.port}${identity ? ` -i ${identity}` : ''} ${access.user}@localhost`;
-        // The child authorizes the key again, which is harmless, and owns the forward from then on.
-        const { pid, logPath } = await this.startDetached(id, args.port, publicKeyFile, flags);
-        if (this.isJsonEnabled()) {
-          this.outputJson({ id, user: access.user, port: args.port, command, pid, logPath });
-        } else {
-          this.info(
-            `Forwarding localhost:${args.port} to SSH on ${id} in the background (PID ${pid}). Stop it with kill ${pid}.`,
-          );
-          this.output(command);
-        }
-        return;
-      }
       const tunnel = await client.startPortForward(args.port, access.port, { logLevel: 'none' });
       const command = `ssh -p ${args.port}${identity ? ` -i ${identity}` : ''} ${access.user}@localhost`;
       try {
@@ -93,57 +107,6 @@ export default class MacosSsh extends BaseCommand {
         tunnel.close();
       }
     });
-  }
-
-  /**
-   * startDetached runs this command with --no-detach in a background process that outlives this
-   * one, with its output in ~/.lim/ssh, and returns once the forward accepts connections.
-   */
-  private async startDetached(
-    id: string,
-    port: number,
-    publicKeyFile: string,
-    flags: Record<string, unknown>,
-  ): Promise<{ pid: number; logPath: string }> {
-    const directory = path.join(os.homedir(), '.lim', 'ssh');
-    fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-    const logPath = path.join(directory, `${id}-${port}.log`);
-    const childArgs = [
-      process.argv[1]!,
-      'macos',
-      'ssh',
-      String(port),
-      '--no-detach',
-      '--id',
-      id,
-      '--public-key',
-      publicKeyFile,
-    ];
-    if (typeof flags['api-key'] === 'string') childArgs.push('--api-key', flags['api-key']);
-    const logFd = fs.openSync(logPath, 'w', 0o600);
-    const child = spawn(process.execPath, childArgs, { detached: true, stdio: ['ignore', logFd, logFd] });
-    fs.closeSync(logFd);
-    child.unref();
-    if (child.pid === undefined) throw new Error('Failed to start the background SSH tunnel.');
-    const pid = child.pid;
-    let exited: number | null | undefined;
-    child.once('exit', (code) => (exited = code));
-    const deadline = Date.now() + DETACHED_READY_MS;
-    while (exited === undefined && Date.now() < deadline) {
-      if (await probePortOpen(port)) return { pid, logPath };
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-    if (exited === undefined) {
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {}
-    }
-    const tail = fs.readFileSync(logPath, 'utf8').trim().split('\n').slice(-10).join('\n');
-    throw new Error(
-      `The background SSH tunnel ${
-        exited === undefined ? 'did not start listening in time' : `exited during startup (code ${exited})`
-      }.` + `${tail ? `\n${tail}` : ''}\nSee ${logPath} for details, or run with --no-detach.`,
-    );
   }
 
   /** The key to authorize, its file, and the private key ssh needs -i for when it is not a default one. */

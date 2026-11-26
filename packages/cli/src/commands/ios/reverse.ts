@@ -1,13 +1,14 @@
 import { Args, Flags } from '@oclif/core';
 import type { Ios } from '@limrun/api';
 import { BaseCommand } from '../../base-command';
+import { inheritedFlags, startDetached } from '../../lib/detached';
 import { getIosInstanceClient } from '../../lib/instance-client-factory';
 import { parseReversePortMapping } from '../../lib/reverse-port-mapping';
 
 export default class IosReverse extends BaseCommand {
   static summary = 'Expose a local client-first service to the simulator';
   static description =
-    'Open a long-lived reverse tunnel so an app in the remote iOS Simulator can connect to LISTEN_IP:remotePort and reach a local client-first service such as an HTTP or WebSocket dev server. Remote ports must be in the reserved Limrun range 57090-57099.';
+    'Open a long-lived reverse tunnel so an app in the remote iOS Simulator can connect to LISTEN_IP:remotePort and reach a local client-first service such as an HTTP or WebSocket dev server. Remote ports must be in the reserved Limrun range 57090-57099. The tunnel runs in a background process that the command prints the PID of; stop it with kill <pid>, or pass --no-detach to keep it in the foreground until Ctrl+C.';
   static examples = [
     '<%= config.bin %> ios reverse 57090:8081 --id <instance-ID>',
     '<%= config.bin %> ios reverse 57091:3000 --id <instance-ID>',
@@ -33,11 +34,43 @@ export default class IosReverse extends BaseCommand {
         'Host for the local service on your machine. Defaults to 127.0.0.1; non-loopback hosts are intended for debugging.',
       default: '127.0.0.1',
     }),
+    detach: Flags.boolean({
+      description:
+        'Run the reverse tunnel in a background process and return once it is up. Use --no-detach to stay in the foreground until Ctrl+C.',
+      default: true,
+      allowNo: true,
+    }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IosReverse);
     this.setParsedFlags(flags);
+
+    if (flags.detach) {
+      const id = this.resolveIosInstance(flags.id).id;
+      const { pid, logPath, ready } = await startDetached({
+        name: `ios-reverse-${id}-${args.mapping.replace(':', '-')}`,
+        args: [
+          'ios',
+          'reverse',
+          args.mapping,
+          '--id',
+          id,
+          '--local-host',
+          flags['local-host'],
+          ...inheritedFlags(flags),
+        ],
+      });
+      if (flags.json) {
+        this.outputJson({ ...ready, pid, logPath });
+      } else {
+        const remote = `${String(ready['remoteHost'])}:${String(ready['remotePort'])}`;
+        this.output(`${remote} -> ${String(ready['localHost'])}:${String(ready['localPort'])}`);
+        this.output(`Use ${remote} from the simulator (for example exp://${remote}).`);
+        this.info(`Reverse tunnel running in the background. Stop it with kill ${pid}.`);
+      }
+      return;
+    }
 
     await this.withAuth(async () => {
       const { remotePort, localPort } = parseReversePortMapping(args.mapping);

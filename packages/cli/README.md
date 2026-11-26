@@ -422,12 +422,12 @@ lim ios install-app https://example.com/app.ipa
 lim ios install-app https://example.com/app.ipa --md5 <hex-digest>
 lim ios install-app ./MyApp.ipa --launch-mode RelaunchIfRunning
 
-# Launch — streams the app's logs until the app exits or Ctrl+C
+# Launch and return
 lim ios launch-app com.example.myapp
 lim ios launch-app com.example.myapp --mode RelaunchIfRunning
 
-# Launch and exit immediately without streaming logs
-lim ios launch-app com.example.myapp --detach
+# Launch and stream the app's logs until the app exits or Ctrl+C
+lim ios launch-app com.example.myapp --no-detach
 
 # Terminate
 lim ios terminate-app com.example.myapp
@@ -515,8 +515,9 @@ lim ios forward 0:8100 --id <instance-ID> --json
 ```
 
 A single port uses that port on both sides. The local listener binds to `127.0.0.1`.
-The command stays running until Ctrl+C, including with `--json`, and closes its
-connections when it exits. Start the server inside the simulator separately and
+The forward runs in a background process and the command returns once it listens,
+printing the PID; stop it with `kill <pid>`, which closes its connections. Pass
+`--no-detach` to keep it in the foreground until Ctrl+C. Start the server inside the simulator separately and
 bind it to the simulator's assigned IP or `0.0.0.0`. A server bound only to
 `127.0.0.1` inside the simulator is not reachable through this forward.
 
@@ -671,7 +672,8 @@ lim android connect
 lim android connect --id android_abc123 --adb-path /usr/local/bin/adb
 ```
 
-The tunnel stays open until you press Ctrl+C. While connected, you can use `adb` commands in another terminal.
+The tunnel runs in a background process and the command returns once it is up, printing the PID; stop it with
+`kill <pid>`. Pass `--no-detach` to keep it in the foreground until Ctrl+C. While connected, you can use `adb` commands.
 
 ---
 
@@ -814,7 +816,7 @@ Work inside the guest, as its user `limrun`, who can run `sudo` without a passwo
 lim macos run -- sw_vers                 # Run a command; output streams, its exit code is kept (alias: exec)
 lim macos ssh 8080                       # Forward localhost:8080 to the guest's SSH in the background
 ssh -p 8080 limrun@localhost             # ...then connect
-lim macos forward 3000                   # Reach a server in the guest at localhost:3000 until Ctrl-C
+lim macos forward 3000                   # Reach a server in the guest at localhost:3000, in the background
 lim macos forward 8080:3000              # ...or on another local port
 lim macos launch-app com.apple.TextEdit  # Launch an app by bundle ID, name or path
 lim macos terminate-app com.apple.TextEdit
@@ -1002,7 +1004,7 @@ lim ios create --model iphone
 lim session start
 
 # Fast interaction loop — each command takes ~50ms
-lim ios launch-app com.example.myapp --detach
+lim ios launch-app com.example.myapp
 lim ios element-tree | jq '.tree'
 lim ios tap-element --ax-label "Login"
 lim ios type "user@example.com"
@@ -1023,8 +1025,8 @@ lim session start --id ios_phone_123
 lim session start --id ios_tablet_456
 
 # Agent controls both devices in parallel — ~50ms per command
-lim ios launch-app com.example.myapp --id ios_phone_123 --detach
-lim ios launch-app com.example.myapp --id ios_tablet_456 --detach
+lim ios launch-app com.example.myapp --id ios_phone_123
+lim ios launch-app com.example.myapp --id ios_tablet_456
 
 lim ios screenshot phone.png --id ios_phone_123
 lim ios screenshot tablet.png --id ios_tablet_456
@@ -1053,7 +1055,7 @@ done
 
 # Run tests against all devices
 for ID in "${IDS[@]}"; do
-  lim ios launch-app com.example.myapp --id $ID --detach
+  lim ios launch-app com.example.myapp --id $ID
   lim ios screenshot "test_${ID}.png" --id $ID
 done
 
@@ -1085,7 +1087,7 @@ lim ios create --attach
 lim session start
 
 # 4. Test the built app on the simulator (~50ms per command)
-lim ios launch-app com.example.myapp --detach
+lim ios launch-app com.example.myapp
 lim ios element-tree | jq '.'
 lim ios screenshot built-app.png
 
@@ -1344,7 +1346,7 @@ lim ios create --install ./build/MyApp.ipa
 lim session start
 
 # Verify — each command takes ~50ms with session
-lim ios launch-app com.example.myapp --detach
+lim ios launch-app com.example.myapp
 sleep 2
 lim ios element-tree | grep "Welcome"
 lim ios screenshot test-result.png
@@ -1390,7 +1392,7 @@ ID=$(lim ios create --attach --json | jq -r '.metadata.id')
 
 # Verify the built app on the simulator
 lim session start
-lim ios launch-app com.example.myapp --detach
+lim ios launch-app com.example.myapp
 sleep 2
 lim ios element-tree | grep "Welcome"
 lim ios screenshot test-result.png

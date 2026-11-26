@@ -1,6 +1,7 @@
 import { Args, Flags } from '@oclif/core';
 import { startTcpTunnel } from '@limrun/api/tunnel';
 import { BaseCommand } from '../../base-command';
+import { inheritedFlags, startDetached } from '../../lib/detached';
 import { resolveIosConnection } from '../../lib/instance-client-factory';
 import { parsePortMapping } from '../../lib/port-mapping';
 
@@ -9,7 +10,8 @@ export default class IosForward extends BaseCommand {
   static description =
     'Forward a local TCP port to a server running inside the remote iOS Simulator. ' +
     'Use it for HTTP servers, WebDriverAgent, or WebSockets. The listener binds to 127.0.0.1 ' +
-    'and stays running until Ctrl+C. Start the server in the simulator separately. ' +
+    'and runs in a background process that the command prints the PID of; stop it with kill <pid>, ' +
+    'or pass --no-detach to keep it in the foreground until Ctrl+C. Start the server in the simulator separately. ' +
     "The server must accept connections on the simulator's assigned IP, for example by binding to 0.0.0.0. " +
     'Protocols where the server sends data first and UDP are not supported.';
   static examples = [
@@ -34,12 +36,33 @@ export default class IosForward extends BaseCommand {
     id: Flags.string({
       description: 'iOS instance ID to target. Defaults to the last created iOS instance.',
     }),
+    detach: Flags.boolean({
+      description:
+        'Run the forward in a background process and return once it listens. Use --no-detach to stay in the foreground until Ctrl+C.',
+      default: true,
+      allowNo: true,
+    }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(IosForward);
     this.setParsedFlags(flags);
     const { localPort, remotePort } = parsePortMapping(args.mapping);
+
+    if (flags.detach) {
+      const id = this.resolveIosInstance(flags.id).id;
+      const { pid, logPath, ready } = await startDetached({
+        name: `ios-forward-${id}-${args.mapping.replace(':', '-')}`,
+        args: ['ios', 'forward', args.mapping, '--id', id, ...inheritedFlags(flags)],
+      });
+      if (flags.json) {
+        this.outputJson({ ...ready, pid, logPath });
+      } else {
+        this.output(`${String(ready['localHost'])}:${String(ready['localPort'])} -> ${id}:${remotePort}`);
+        this.info(`Port forward running in the background. Stop it with kill ${pid}.`);
+      }
+      return;
+    }
 
     await this.withAuth(
       async () => {
