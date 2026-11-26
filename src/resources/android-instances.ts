@@ -310,6 +310,13 @@ export namespace AndroidInstanceCreateParams {
      * holds it, and the instance becomes ready only after the tunnel attaches.
      */
     tunnel?: string;
+
+    /**
+     * HTTP headers the instance adds, next to `Limrun-Instance-Id`, to every inspected
+     * request it sends through a tunnel, so a service behind one shared tunnel can tell
+     * instances apart. The network capture shows them, so do not put secrets here.
+     */
+    tunnelHeaders?: { [name: string]: string };
   }
 
   export namespace Spec {
