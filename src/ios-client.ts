@@ -2,9 +2,8 @@ import os from 'os';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import { WebSocket, Data } from 'ws';
 import { EventEmitter } from 'events';
-import { assertPort, isNonRetryableError, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
+import { assertPort, startReverseTcpTunnel, type ReverseTunnel } from './tunnel';
 import {
   destinationTunnelDialOptions,
   startDestinationTcpTunnel,
@@ -36,19 +35,18 @@ import { persistFields, ttlFields, type PersistOption } from './internal/persist
 import { streamSessionEntries } from './internal/session-stream';
 import type { SessionLogLine, SessionEvent, PerformanceSample } from './resources/session-artifacts';
 import { LogStream } from './log-stream';
+import {
+  openSignalingTransport,
+  type ConnectionState,
+  type ConnectionStateCallback,
+  type SignalingMessage,
+  type SignalingTransport,
+} from './internal/signaling-transport';
 
 export { type PersistOption } from './internal/persist-option';
 export { LogStream, type LogStreamEvents } from './log-stream';
 
-/**
- * Connection state of the instance client
- */
-export type ConnectionState = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
-
-/**
- * Callback function for connection state changes
- */
-export type ConnectionStateCallback = (state: ConnectionState) => void;
+export { type ConnectionState, type ConnectionStateCallback } from './internal/signaling-transport';
 
 const ACTIVE_RECORDING_FILENAME = 'recording.mp4';
 export const REVERSE_TUNNEL_REMOTE_PORT_MIN = 57090;
@@ -2162,23 +2160,9 @@ export function streamPerformance(options: PerformanceStreamOptions): () => void
  * @returns An InstanceClient for controlling the instance
  */
 export async function createInstanceClient(options: InstanceClientOptions): Promise<InstanceClient> {
-  const endpointWebSocketUrl = `${options.apiUrl
-    .replace('https://', 'wss://')
-    .replace('http://', 'ws://')}/signaling?token=${options.token}`;
   const logLevel = options.logLevel ?? 'info';
-  const maxReconnectAttempts = options.maxReconnectAttempts ?? 6;
-  const reconnectDelay = options.reconnectDelay ?? 1000;
-  const maxReconnectDelay = options.maxReconnectDelay ?? 30000;
-
-  let ws: WebSocket | undefined = undefined;
-  let connectionState: ConnectionState = 'connecting';
-  let reconnectAttempts = 0;
-  let reconnectTimeout: NodeJS.Timeout | undefined;
-  let handshakeDeadline: NodeJS.Timeout | undefined;
-  let intentionalDisconnect = false;
-  let lastError: string | undefined;
-  // Centralized pending requests map - handles all request/response patterns
-  const pendingRequests: Map<string, PendingRequest<any>> = new Map();
+  // Set once the signaling socket opens, before any method can run.
+  let transport!: SignalingTransport;
 
   // Simctl uses streaming, so it needs separate handling
   const simctlExecutions: Map<string, SimctlExecution> = new Map();
@@ -2191,8 +2175,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
   const xcrunShimCleanups: Array<() => Promise<void>> = [];
   const httpProxyCleanups: Array<() => Promise<void>> = [];
-
-  const stateChangeCallbacks: Set<ConnectionStateCallback> = new Set();
 
   // Logger functions
   const logger = {
@@ -2210,50 +2192,9 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     },
   };
 
-  const updateConnectionState = (newState: ConnectionState): void => {
-    if (connectionState !== newState) {
-      connectionState = newState;
-      logger.debug(`Connection state changed to: ${newState}`);
-      stateChangeCallbacks.forEach((callback) => {
-        try {
-          callback(newState);
-        } catch (err) {
-          logger.error('Error in connection state callback:', err);
-        }
-      });
-    }
-  };
-
-  const failPendingRequests = (reason: string): void => {
-    pendingRequests.forEach((request) => {
-      clearTimeout(request.timeout);
-      request.reject(new Error(reason));
-    });
-    pendingRequests.clear();
-
+  const failExecutions = (reason: string): void => {
     simctlExecutions.forEach((execution) => execution._handleError(new Error(reason)));
     simctlExecutions.clear();
-  };
-
-  const cleanupConnection = (): void => {
-    clearTimeout(handshakeDeadline);
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout);
-      reconnectTimeout = undefined;
-    }
-    if (pingInterval) {
-      clearInterval(pingInterval);
-      pingInterval = undefined;
-    }
-    if (ws) {
-      ws.removeAllListeners();
-      // A retired socket can emit an error when an unfinished handshake is cancelled.
-      ws.on('error', () => {});
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
-      }
-      ws = undefined;
-    }
   };
 
   const cleanupClientResources = (): void => {
@@ -2265,11 +2206,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     for (const closeProxy of proxyCleanups) {
       closeProxy().catch((error) => logger.warn('Failed to close HTTP proxy:', error));
     }
-  };
-
-  const cleanup = (): void => {
-    cleanupConnection();
-    cleanupClientResources();
   };
 
   const registerServerNotification = (
@@ -2323,47 +2259,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     serverNotifications.clear();
   };
 
-  let pingInterval: NodeJS.Timeout | undefined;
-  const keepAliveSessionId =
-    Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-
-  return new Promise<InstanceClient>((resolveConnection, rejectConnection) => {
-    let hasResolved = false;
-    let retriedHandshake = false;
-
-    // Reconnection logic with exponential backoff
-    const scheduleReconnect = (): void => {
-      if (intentionalDisconnect) {
-        logger.debug('Skipping reconnection (intentional disconnect)');
-        return;
-      }
-
-      if (isNonRetryableError(lastError ?? '')) {
-        logger.error(`Skipping reconnection (non-retryable error): ${lastError}`);
-        updateConnectionState('disconnected');
-        clearServerNotifications();
-        return;
-      }
-
-      if (reconnectAttempts >= maxReconnectAttempts) {
-        logger.error(`Max reconnection attempts (${maxReconnectAttempts}) reached. Giving up.`);
-        updateConnectionState('disconnected');
-        clearServerNotifications();
-        return;
-      }
-
-      const currentDelay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts), maxReconnectDelay);
-
-      reconnectAttempts++;
-      logger.debug(`Scheduling reconnection attempt ${reconnectAttempts} in ${currentDelay}ms...`);
-      updateConnectionState('reconnecting');
-
-      reconnectTimeout = setTimeout(() => {
-        logger.debug(`Attempting to reconnect (attempt ${reconnectAttempts})...`);
-        setupWebSocket();
-      }, currentDelay);
-    };
-
+  {
     // Generate unique request ID
     const generateId = (): string => {
       return `ts-client-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -2392,43 +2288,12 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return new CommandError(message.error!, source.code, source.written);
     };
 
-    // Generic request sender with timeout and response handling
     const sendRequest = <T>(
       type: string,
       params: Record<string, unknown> = {},
       transform?: (message: ServerResponse) => T,
       timeoutMs: number = 30000,
-    ): Promise<T> => {
-      return new Promise((resolve, reject) => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-          reject(new Error('WebSocket is not connected or connection is not open.'));
-          return;
-        }
-
-        const id = generateId();
-        const timeout = setTimeout(() => {
-          pendingRequests.delete(id);
-          reject(new Error(`Request ${type} timed out`));
-        }, timeoutMs);
-
-        pendingRequests.set(
-          id,
-          transform ? { resolve, reject, timeout, transform } : { resolve, reject, timeout },
-        );
-
-        const request = { type, id, ...params };
-        logger.debug('Sending request:', redactRequestForDebug(request));
-
-        ws.send(JSON.stringify(request), (err?: Error) => {
-          if (err) {
-            clearTimeout(timeout);
-            pendingRequests.delete(id);
-            logger.error(`Failed to send ${type} request:`, err);
-            reject(err);
-          }
-        });
-      });
-    };
+    ): Promise<T> => transport.request<T>(type, params, transform as any, timeoutMs);
 
     const splitAppLogTail = (logs: string): string[] => {
       if (logs.length === 0) {
@@ -2567,278 +2432,6 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         stderr: msg.stderr ? Buffer.from(msg.stderr, 'base64').toString('utf-8') : '',
         exitCode: msg.exitCode ?? -1,
       }),
-    };
-
-    const setupWebSocket = (): void => {
-      cleanupConnection();
-      updateConnectionState('connecting');
-
-      const proxyAgent = nodeProxyTransport.getWebSocketAgent(endpointWebSocketUrl);
-      let opened = false;
-      let handshakeError: Error | undefined;
-      const socket = new WebSocket(endpointWebSocketUrl, proxyAgent ? { agent: proxyAgent } : {});
-      ws = socket;
-      // A socket inactivity timeout allows a slow TLS peer to keep the first command waiting.
-      handshakeDeadline = setTimeout(() => {
-        handshakeError = Object.assign(new Error('Opening handshake has timed out'), { code: 'ETIMEDOUT' });
-        socket.terminate();
-      }, 5000);
-
-      ws.on('message', (data: Data) => {
-        let message: ServerResponse;
-        try {
-          message = JSON.parse(data.toString());
-        } catch (e) {
-          logger.error({ data, error: e }, 'Failed to parse JSON message');
-          return;
-        }
-
-        if (handleAppExit(message) || handleAppHang(message)) {
-          return;
-        }
-
-        // Handle simctl streaming separately (it uses multiple messages per request)
-        if (message.type === 'simctlStream') {
-          const execution = simctlExecutions.get(message.id);
-          if (!execution) {
-            logger.debug(`Received simctl stream for unknown execution: ${message.id}`);
-            return;
-          }
-          if (execution instanceof LldbExecution) {
-            execution._handleStarted();
-          }
-
-          if (message.stdout) {
-            try {
-              execution._handleStdout(Buffer.from(message.stdout, 'base64'));
-            } catch (err) {
-              logger.error('Failed to decode stdout data:', err);
-            }
-          }
-
-          if (message.stderr) {
-            try {
-              execution._handleStderr(Buffer.from(message.stderr, 'base64'));
-            } catch (err) {
-              logger.error('Failed to decode stderr data:', err);
-            }
-          }
-
-          if (message.exitCode !== undefined) {
-            logger.debug(`Simctl execution ${message.id} completed with exit code ${message.exitCode}`);
-            // Forget the execution first: an exit listener may disconnect, and disconnecting
-            // fails every execution still tracked, including this one.
-            simctlExecutions.delete(message.id);
-            execution._handleExit(message.exitCode);
-          }
-          return;
-        }
-
-        // Handle all other request/response patterns generically
-        const request = pendingRequests.get(message.id);
-        if (!request) {
-          logger.debug(`Received response for unknown or already handled request: ${message.id}`);
-          return;
-        }
-
-        clearTimeout(request.timeout);
-        pendingRequests.delete(message.id);
-
-        if (message.error) {
-          logger.debug(`Server error for ${message.type}: ${message.error}`);
-          request.reject(commandError(message));
-          return;
-        }
-
-        // Use handler to transform response, or resolve with raw message
-        const handler = request.transform ?? responseHandlers[message.type];
-        if (handler) {
-          try {
-            request.resolve(handler(message));
-          } catch (err) {
-            request.reject(err as Error);
-          }
-        } else {
-          logger.warn('Received unexpected message type:', message.type);
-          request.resolve(message);
-        }
-      });
-
-      ws.on('error', (err: Error) => {
-        lastError = err.message;
-        logger.error('WebSocket error:', err.message);
-        if (!opened) handshakeError ??= err;
-      });
-
-      ws.on('close', () => {
-        clearTimeout(handshakeDeadline);
-        if (pingInterval) {
-          clearInterval(pingInterval);
-          pingInterval = undefined;
-        }
-
-        const shouldReconnect =
-          !intentionalDisconnect &&
-          !isNonRetryableError(lastError ?? '') &&
-          connectionState !== 'disconnected';
-        updateConnectionState('disconnected');
-
-        logger.debug('Disconnected from server.');
-
-        failPendingRequests('Connection closed');
-
-        if (!hasResolved) {
-          const err = handshakeError ?? new Error('Connection closed before the client was ready');
-          // Retry only the opening handshake. Once open, deviceInfo owns its failure.
-          const code = (err as NodeJS.ErrnoException).code;
-          const transient =
-            ['ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'EHOSTUNREACH', 'ENETUNREACH', 'EAI_AGAIN'].includes(
-              code ?? '',
-            ) ||
-            /^(Opening handshake has timed out|socket hang up|Unexpected server response: 50[234])$/.test(
-              err.message,
-            );
-          if (!opened && !retriedHandshake && maxReconnectAttempts > 0 && transient) {
-            retriedHandshake = true;
-            updateConnectionState('reconnecting');
-            reconnectTimeout = setTimeout(setupWebSocket, 100 + Math.floor(Math.random() * 151));
-          } else {
-            cleanupConnection();
-            rejectConnection(err);
-          }
-          return;
-        }
-        if (shouldReconnect) {
-          scheduleReconnect();
-        } else if (isNonRetryableError(lastError ?? '')) {
-          logger.error(`Closing connection due to non-retryable error: ${lastError}`);
-          cleanup();
-          updateConnectionState('disconnected');
-          failPendingRequests('Non-retryable error');
-          clearServerNotifications();
-          logger.debug('Non-retryable error. Closing connection.');
-        }
-      });
-
-      ws.on('open', async () => {
-        clearTimeout(handshakeDeadline);
-        opened = true;
-        logger.debug('WebSocket connected');
-        reconnectAttempts = 0;
-        lastError = undefined;
-        updateConnectionState('connected');
-
-        pingInterval = setInterval(() => {
-          if (ws && ws.readyState === WebSocket.OPEN) {
-            (ws as any).ping();
-          }
-        }, 30_000);
-
-        if (!hasResolved) {
-          try {
-            // Fetch device info before resolving connection
-            cachedDeviceInfo = await fetchDeviceInfo();
-            logger.debug('Device info fetched:', cachedDeviceInfo);
-          } catch (err) {
-            logger.error('Failed to fetch device info:', err);
-            cleanupConnection();
-            updateConnectionState('disconnected');
-            rejectConnection(err as Error);
-            return;
-          }
-
-          hasResolved = true;
-          resolveConnection({
-            screenshot,
-            elementTree,
-            elementTreeRaw,
-            readElementTree,
-            focusedElement,
-            tap,
-            tapWithScreenSize,
-            tapElement,
-            incrementElement,
-            decrementElement,
-            setElementValue,
-            typeText,
-            pressKey,
-            toggleKeyboard,
-            launchApp,
-            terminateApp,
-            watchApp,
-            monitorApp,
-            appLogTail,
-            streamAppLog,
-            streamSyslog,
-            listApps,
-            openUrl,
-            installApp,
-            saveKeychain,
-            restoreKeychain,
-            resetKeychain,
-            setPermission,
-            getPermission,
-            restartServices,
-            setOrientation,
-            getFoldState,
-            screenshotDisplay,
-            tapDisplay,
-            setDuoOrientation,
-            setHingeAngle,
-            scroll,
-            performActions,
-            startRecording,
-            stopRecording,
-            startRecordingSession,
-            stopRecordingSession,
-            startAppLogCapture,
-            stopAppLogCapture,
-            startEventCapture,
-            stopEventCapture,
-            streamAppLogCapture,
-            streamEventCapture,
-            startPerformanceCapture,
-            stopPerformanceCapture,
-            streamPerformance: streamClientPerformance,
-            playOnMicrophone,
-            stopMicrophonePlayback,
-            microphoneStatus,
-            keepAlive,
-            syncApp,
-            setStoreKitConfig,
-            addCaCertificate,
-            setBlockedDomains,
-            getBlockedDomains,
-            clearStoreKitConfig,
-            discoverStoreKitConfig,
-            softReset,
-            startReverseTunnel,
-            startTunnel,
-            getTunnelStatus,
-            stopTunnel,
-            targetHttpPortUrl,
-            startHttpProxy,
-            startForwardHttpProxy,
-            disconnect,
-            getConnectionState,
-            onConnectionStateChange,
-            simctl,
-            lldb,
-            xcrun,
-            startXcrunShim,
-            xcodebuild,
-            pushFile,
-            pullFile,
-            listFiles,
-            deleteFile,
-            setCameraVideo,
-            clearCameraVideo,
-            lsof,
-            deviceInfo: cachedDeviceInfo,
-            getDeviceInfo,
-          });
-        }
-      });
     };
 
     // ========================================================================
@@ -3211,13 +2804,13 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const streamAppLog = (bundleId: string): LogStream => {
       const id = generateId();
       const subscribeMessage = { type: 'streamAppLog', id, bundleId };
-      return new LogStream(endpointWebSocketUrl, subscribeMessage, 'streamAppLogTerminate', id);
+      return new LogStream(transport.url, subscribeMessage, 'streamAppLogTerminate', id);
     };
 
     const streamSyslog = (): LogStream => {
       const id = generateId();
       const subscribeMessage = { type: 'streamSyslog', id };
-      return new LogStream(endpointWebSocketUrl, subscribeMessage, 'streamSyslogTerminate', id);
+      return new LogStream(transport.url, subscribeMessage, 'streamSyslogTerminate', id);
     };
 
     const listApps = (): Promise<InstalledApp[]> => {
@@ -3479,17 +3072,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return sendRequest<IosMicrophoneStatus>('microphoneStatus');
     };
 
-    const keepAlive = (): void => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        return;
-      }
-      ws.send(
-        JSON.stringify({
-          type: 'keepAlive',
-          sessionId: keepAliveSessionId,
-        }),
-      );
-    };
+    const keepAlive = (): void => transport.keepAlive();
 
     const syncApp: InstanceClient['syncApp'] = async (
       localAppBundlePath: string,
@@ -3601,7 +3184,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     };
 
     // Cached device info, populated during connection
-    let cachedDeviceInfo: DeviceInfo;
+    let cachedDeviceInfo!: DeviceInfo;
 
     /** Tracks a streamed command, sends its request, and returns the handle. */
     const startExecution = <E extends SimctlExecution>(
@@ -3625,7 +3208,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       }
 
       // Send request asynchronously
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (!transport.isOpen()) {
         // Defer error to next tick to allow caller to attach listeners
         process.nextTick(() => {
           simctlExecutions.delete(id);
@@ -3636,7 +3219,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
 
       // stdin can carry secrets such as one-time codes, so it stays out of the log.
       logger.debug(`Sending ${request.type} request:`, { ...request, stdin: undefined });
-      ws.send(JSON.stringify(request), (err?: Error) => {
+      transport.send(request as unknown as Record<string, unknown>, (err?: Error) => {
         if (err) {
           logger.error(`Failed to send ${request.type} request:`, err);
           simctlExecutions.delete(id);
@@ -3677,24 +3260,19 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
     const lldb = (args: string[], opts: LldbOptions = {}): LldbExecution => {
       const id = generateId();
       const sendInput = (data: Buffer | undefined, close: boolean, sequence: number) => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        ws.send(
-          JSON.stringify({
-            type: 'lldbInput',
-            id,
-            sequence,
-            ...(data && { data: data.toString('base64') }),
-            ...(close && { close }),
-          }),
-        );
+        transport.send({
+          type: 'lldbInput',
+          id,
+          sequence,
+          ...(data && { data: data.toString('base64') }),
+          ...(close && { close }),
+        });
       };
       const execution: LldbExecution = new LldbExecution(() => {
         // The session stays tracked: the instance answers with the exit of LLDB, which is what
         // ends `wait()`. A session dropped without `end` would otherwise keep the app stopped.
         if (!execution.isRunning) return;
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'simctlTerminate', id }));
-        } else {
+        if (!transport.send({ type: 'simctlTerminate', id })) {
           // Without a connection the instance has already ended the session and cannot say so.
           simctlExecutions.delete(id);
           execution._handleExit(143);
@@ -4019,25 +3597,169 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       return proxy.port;
     };
 
-    const disconnect = (): void => {
-      intentionalDisconnect = true;
-      cleanup();
-      updateConnectionState('disconnected');
-      failPendingRequests('Intentional disconnect');
-      clearServerNotifications();
-      logger.debug('Intentionally disconnected from WebSocket.');
-    };
+    const disconnect = (): void => transport.disconnect();
 
-    const getConnectionState = (): ConnectionState => {
-      return connectionState;
-    };
+    const getConnectionState = (): ConnectionState => transport.getConnectionState();
 
-    const onConnectionStateChange = (callback: ConnectionStateCallback): (() => void) => {
-      stateChangeCallbacks.add(callback);
-      return () => {
-        stateChangeCallbacks.delete(callback);
-      };
+    const onConnectionStateChange = (callback: ConnectionStateCallback): (() => void) =>
+      transport.onConnectionStateChange(callback);
+
+    transport = await openSignalingTransport({
+      apiUrl: options.apiUrl,
+      token: options.token,
+      logger,
+      ...(options.maxReconnectAttempts !== undefined && {
+        maxReconnectAttempts: options.maxReconnectAttempts,
+      }),
+      ...(options.reconnectDelay !== undefined && { reconnectDelay: options.reconnectDelay }),
+      ...(options.maxReconnectDelay !== undefined && { maxReconnectDelay: options.maxReconnectDelay }),
+      responseHandlers: responseHandlers as Record<string, (message: SignalingMessage) => unknown>,
+      replyError: (message) => commandError(message as unknown as ServerResponse),
+      redactRequest: redactRequestForDebug,
+      handleMessage: (signal) => {
+        const message = signal as unknown as ServerResponse;
+        if (handleAppExit(message) || handleAppHang(message)) {
+          return true;
+        }
+
+        // Handle simctl streaming separately (it uses multiple messages per request)
+        if (message.type === 'simctlStream') {
+          const execution = simctlExecutions.get(message.id);
+          if (!execution) {
+            logger.debug(`Received simctl stream for unknown execution: ${message.id}`);
+            return true;
+          }
+          if (execution instanceof LldbExecution) {
+            execution._handleStarted();
+          }
+
+          if (message.stdout) {
+            try {
+              execution._handleStdout(Buffer.from(message.stdout, 'base64'));
+            } catch (err) {
+              logger.error('Failed to decode stdout data:', err);
+            }
+          }
+
+          if (message.stderr) {
+            try {
+              execution._handleStderr(Buffer.from(message.stderr, 'base64'));
+            } catch (err) {
+              logger.error('Failed to decode stderr data:', err);
+            }
+          }
+
+          if (message.exitCode !== undefined) {
+            logger.debug(`Simctl execution ${message.id} completed with exit code ${message.exitCode}`);
+            // Forget the execution first: an exit listener may disconnect, and disconnecting
+            // fails every execution still tracked, including this one.
+            simctlExecutions.delete(message.id);
+            execution._handleExit(message.exitCode);
+          }
+          return true;
+        }
+        return false;
+      },
+      onConnectionLost: failExecutions,
+      onClosed: () => {
+        cleanupClientResources();
+        clearServerNotifications();
+      },
+      onFirstOpen: async (opened) => {
+        transport = opened;
+        cachedDeviceInfo = await fetchDeviceInfo();
+        logger.debug('Device info fetched:', cachedDeviceInfo);
+      },
+    });
+
+    return {
+      screenshot,
+      elementTree,
+      elementTreeRaw,
+      focusedElement,
+      readElementTree,
+      tap,
+      tapWithScreenSize,
+      tapElement,
+      incrementElement,
+      decrementElement,
+      setElementValue,
+      typeText,
+      pressKey,
+      toggleKeyboard,
+      launchApp,
+      terminateApp,
+      watchApp,
+      monitorApp,
+      appLogTail,
+      streamAppLog,
+      streamSyslog,
+      listApps,
+      openUrl,
+      installApp,
+      saveKeychain,
+      restoreKeychain,
+      resetKeychain,
+      setPermission,
+      getPermission,
+      restartServices,
+      setOrientation,
+      getFoldState,
+      screenshotDisplay,
+      tapDisplay,
+      setDuoOrientation,
+      setHingeAngle,
+      scroll,
+      performActions,
+      startRecording,
+      stopRecording,
+      startRecordingSession,
+      stopRecordingSession,
+      startAppLogCapture,
+      stopAppLogCapture,
+      startEventCapture,
+      stopEventCapture,
+      streamAppLogCapture,
+      streamEventCapture,
+      startPerformanceCapture,
+      stopPerformanceCapture,
+      streamPerformance: streamClientPerformance,
+      playOnMicrophone,
+      stopMicrophonePlayback,
+      microphoneStatus,
+      keepAlive,
+      syncApp,
+      setStoreKitConfig,
+      addCaCertificate,
+      setBlockedDomains,
+      getBlockedDomains,
+      clearStoreKitConfig,
+      discoverStoreKitConfig,
+      softReset,
+      startReverseTunnel,
+      startTunnel,
+      getTunnelStatus,
+      stopTunnel,
+      targetHttpPortUrl,
+      startHttpProxy,
+      startForwardHttpProxy,
+      disconnect,
+      getConnectionState,
+      onConnectionStateChange,
+      simctl,
+      lldb,
+      xcrun,
+      startXcrunShim,
+      xcodebuild,
+      pushFile,
+      pullFile,
+      listFiles,
+      deleteFile,
+      setCameraVideo,
+      clearCameraVideo,
+      lsof,
+      deviceInfo: cachedDeviceInfo,
+      getDeviceInfo,
     };
-    setupWebSocket();
-  });
+  }
 }

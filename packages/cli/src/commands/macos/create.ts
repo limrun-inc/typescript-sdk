@@ -143,23 +143,27 @@ export default class MacosCreate extends BaseCommand {
 
       if (snapshot || wantsCaptures) {
         const guest = await this.client.macosInstances.createClient({ instance, logLevel: 'none' });
-        // The guest restores at most once: a reused instance that already restored keeps its disk,
-        // and the request reports that earlier restore instead of running another.
-        if (snapshot) await restoreMacosSnapshot(guest, snapshot, (line) => this.info(line));
-        if (wantsCaptures) {
-          const started = await startPersistedCaptures(guest, {
-            record: flags.record,
-            appLogsBundleId: flags['app-logs'],
-            events: flags.events,
-            ttlSeconds: captureTtlSeconds,
-          });
-          if (flags.perf) {
-            await guest.startPerformanceCapture({ ttlSeconds: captureTtlSeconds });
-            started.push('performance capture');
+        try {
+          // The guest restores at most once: a reused instance that already restored keeps its disk,
+          // and the request reports that earlier restore instead of running another.
+          if (snapshot) await restoreMacosSnapshot(guest, snapshot, (line) => this.info(line));
+          if (wantsCaptures) {
+            const started = await startPersistedCaptures(guest, {
+              record: flags.record,
+              appLogsBundleId: flags['app-logs'],
+              events: flags.events,
+              ttlSeconds: captureTtlSeconds,
+            });
+            if (flags.perf) {
+              await guest.startPerformanceCapture({ ttlSeconds: captureTtlSeconds });
+              started.push('performance capture');
+            }
+            for (const capture of started) {
+              this.info(`Started persisted ${capture} (kept for ${flags['persist-ttl']}).`);
+            }
           }
-          for (const capture of started) {
-            this.info(`Started persisted ${capture} (kept for ${flags['persist-ttl']}).`);
-          }
+        } finally {
+          guest.disconnect();
         }
       }
 

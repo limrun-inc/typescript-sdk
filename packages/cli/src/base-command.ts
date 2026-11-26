@@ -1565,7 +1565,16 @@ export abstract class BaseCommand extends Command {
       );
     }
     const client = await this.client.macosInstances.createClient({ apiUrl, token, logLevel: 'warn' });
+    this.macosClients.push(client);
     return { id: target.id, client };
+  }
+
+  /** macOS clients this command opened; their signaling sockets close when it finishes. */
+  private macosClients: MacosClient[] = [];
+
+  protected override async finally(error: Error | undefined): Promise<any> {
+    for (const client of this.macosClients.splice(0)) client.disconnect?.();
+    return super.finally(error);
   }
 
   protected gradleTargetFromId(id: string): LastGradleInstance {
