@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.78.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.77.3...v0.78.0) (2026-11-26)
+
+
+### Features
+
+* **cli:** lim macos guest commands on the macOS guest client ([#737](https://github.com/limrun-inc/typescript-sdk/issues/737)) ([41892c9](https://github.com/limrun-inc/typescript-sdk/commit/41892c983311668ec7c7bbd70f4cdf7fda25d613))
+* **ios:** element tree source, idle wait, focused element and command error codes ([5a58c09](https://github.com/limrun-inc/typescript-sdk/commit/5a58c09478aea25473f27037b027914c96823075))
+* **ui:** frame macOS guests in a MacBook Pro ([#733](https://github.com/limrun-inc/typescript-sdk/issues/733)) ([c9c4cd1](https://github.com/limrun-inc/typescript-sdk/commit/c9c4cd1820e679ab5402f480042f5c7af7078151))
+
+
+### Refactors
+
+* **ui:** one 3D stage for the iPhone Duo and the MacBook ([#739](https://github.com/limrun-inc/typescript-sdk/issues/739)) ([13e9b6f](https://github.com/limrun-inc/typescript-sdk/commit/13e9b6fb1dedc728b6377802e1017b395f0535a9))
+
 ## [0.77.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.77.2...v0.77.3) (2026-11-24)
 
 
