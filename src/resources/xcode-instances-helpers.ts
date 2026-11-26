@@ -48,6 +48,7 @@ import {
   type FolderSyncOptions,
 } from '../folder-sync';
 import { createIgnoreFn } from '../folder-sync-ignore';
+import { projectFolderName } from '../project-identity';
 import {
   createBuildRun,
   type BuildRunOptions,
@@ -104,6 +105,12 @@ export type SyncOptions = {
   additionalFiles?: AdditionalFileSyncEntry[];
   /** Called after every successful sync, including watch-triggered re-syncs. */
   onSyncComplete?: FolderSyncOptions['onSyncComplete'];
+  /**
+   * Folder the project syncs into on the instance. Defaults to a name taken from the Git
+   * repository, so every clone and worktree of a project shares one folder and its build state.
+   * A project outside Git uses the local folder's name.
+   */
+  rootName?: string;
 };
 
 export type XcodeRunOptions = BuildRunOptions;
@@ -1021,6 +1028,9 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       },
       async sync(localCodePath: string, opts?: SyncOptions): Promise<SyncResult> {
         const { cacheKey, basisCacheDir } = deriveBasisCache(localCodePath, opts?.basisCacheDir);
+        // Build state on the instance is tied to this folder's path. A name taken from the local
+        // folder gives each worktree its own path, so none could reuse another's snapshot.
+        const rootName = opts?.rootName ?? projectFolderName(localCodePath);
         const codeSyncOpts: FolderSyncOptions = {
           apiUrl,
           token,
@@ -1043,6 +1053,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           syncSymlinks: true,
           ...(opts?.additionalFiles && { additionalFiles: opts.additionalFiles }),
           ...(opts?.onSyncComplete ? { onSyncComplete: opts.onSyncComplete } : {}),
+          ...(rootName ? { rootName } : {}),
         };
 
         const result = await syncFolderImpl(localCodePath, codeSyncOpts);

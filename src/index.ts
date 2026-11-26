@@ -162,6 +162,7 @@ export {
   type XcodeInstanceCreateParamsWithSnapshot,
   type XcodeInstanceCreateParamsWithCache,
 } from './resources/xcode-instances-helpers';
+export { projectIdentity, projectFolderName, type ProjectIdentity } from './project-identity';
 export {
   type GradleCreateClientParams,
   type GradleClient,
