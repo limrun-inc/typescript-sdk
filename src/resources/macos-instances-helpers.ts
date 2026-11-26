@@ -485,6 +485,7 @@ class MacosInstancesHelpers extends MacosInstances {
             pid: msg['pid'],
             launched: msg['launched'] ?? false,
           }),
+          launchAppTimeoutMs,
         );
       },
 
@@ -634,6 +635,8 @@ class MacosInstancesHelpers extends MacosInstances {
 // A stop answers once its persisted capture or recording is uploaded, which grows with its length.
 const captureStopTimeoutMs = 300_000;
 const recordingStopTimeoutMs = 180_000;
+// A first launch or a relaunch can take longer than the default, as on iOS.
+const launchAppTimeoutMs = 90_000;
 
 MacosInstances.prototype.createClient = MacosInstancesHelpers.prototype.createClient;
 

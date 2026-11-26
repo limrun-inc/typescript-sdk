@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { WebSocket, Data } from 'ws';
 import { nodeProxyTransport } from './proxy-transport';
 import { isNonRetryableError } from '../tunnel';
@@ -88,6 +89,9 @@ type PendingRequest = {
   transform?: (message: SignalingMessage) => unknown;
 };
 
+/** The WebSocket close code for a policy violation, as the instance closes a refused session. */
+const POLICY_VIOLATION = 1008;
+
 /** signalingUrl is the signaling WebSocket URL of an instance API URL. */
 export function signalingUrl(apiUrl: string, token: string): string {
   return `${apiUrl.replace('https://', 'wss://').replace('http://', 'ws://')}/signaling?token=${token}`;
@@ -166,7 +170,7 @@ export function openSignalingTransport(options: SignalingTransportOptions): Prom
 
   const isOpen = (): boolean => !!ws && ws.readyState === WebSocket.OPEN;
 
-  const generateId = (): string => `ts-client-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  const generateId = (): string => `ts-client-${randomUUID()}`;
 
   const request = <T>(
     type: string,
@@ -350,26 +354,35 @@ export function openSignalingTransport(options: SignalingTransportOptions): Prom
         if (!opened) handshakeError ??= err;
       });
 
-      socket.on('close', () => {
+      socket.on('close', (code: number) => {
         clearTimeout(handshakeDeadline);
         if (pingInterval) {
           clearInterval(pingInterval);
           pingInterval = undefined;
         }
 
+        // A policy close, or the instance's error frame before it, refuses the token for good,
+        // such as a command above its grant, so reconnecting cannot help.
+        const refusal =
+          instanceError ?? (code === POLICY_VIOLATION ? 'the instance closed the session' : undefined);
+        instanceError = undefined;
         const shouldReconnect =
           !intentionalDisconnect &&
+          !refusal &&
           !isNonRetryableError(lastError ?? '') &&
           connectionState !== 'disconnected';
         updateConnectionState('disconnected');
 
         logger.debug('Disconnected from server.');
 
-        failPendingRequests(instanceError ? `Connection closed: ${instanceError}` : 'Connection closed');
-        instanceError = undefined;
+        failPendingRequests(refusal ? `Connection closed: ${refusal}` : 'Connection closed');
 
         if (!hasResolved) {
-          const err = handshakeError ?? new Error('Connection closed before the client was ready');
+          // Settle before onFirstOpen sees its request fail, with the instance's reason.
+          const err =
+            refusal ?
+              new Error(refusal)
+            : handshakeError ?? new Error('Connection closed before the client was ready');
           // Retry only the opening handshake. Once open, onFirstOpen owns its failure.
           const code = (err as NodeJS.ErrnoException).code;
           const transient =
@@ -379,7 +392,7 @@ export function openSignalingTransport(options: SignalingTransportOptions): Prom
             /^(Opening handshake has timed out|socket hang up|Unexpected server response: 50[234])$/.test(
               err.message,
             );
-          if (!opened && !retriedHandshake && maxReconnectAttempts > 0 && transient) {
+          if (!refusal && !opened && !retriedHandshake && maxReconnectAttempts > 0 && transient) {
             retriedHandshake = true;
             updateConnectionState('reconnecting');
             reconnectTimeout = setTimeout(setupWebSocket, 100 + Math.floor(Math.random() * 151));
@@ -391,6 +404,10 @@ export function openSignalingTransport(options: SignalingTransportOptions): Prom
         }
         if (shouldReconnect) {
           scheduleReconnect();
+        } else if (refusal && !intentionalDisconnect) {
+          logger.error(`The instance closed the session: ${refusal}`);
+          cleanupConnection();
+          options.onClosed?.();
         } else if (isNonRetryableError(lastError ?? '')) {
           logger.error(`Closing connection due to non-retryable error: ${lastError}`);
           cleanupConnection();

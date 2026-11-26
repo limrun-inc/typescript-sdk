@@ -6,10 +6,14 @@ const quiet = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {}
 async function withServer(
   onMessage: (ws: import('ws').WebSocket, msg: Record<string, any>) => void,
   run: (apiUrl: string) => Promise<void>,
+  onConnection?: () => void,
 ): Promise<void> {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0, path: '/signaling' });
   await new Promise<void>((resolve) => server.once('listening', () => resolve()));
-  server.on('connection', (ws) => ws.on('message', (data) => onMessage(ws, JSON.parse(data.toString()))));
+  server.on('connection', (ws) => {
+    onConnection?.();
+    ws.on('message', (data) => onMessage(ws, JSON.parse(data.toString())));
+  });
   try {
     await run(`http://127.0.0.1:${(server.address() as import('net').AddressInfo).port}`);
   } finally {
@@ -91,4 +95,107 @@ test('waits without a timeout when asked, and reports messages sent before the r
       }
     },
   );
+});
+
+test('a policy close stops reconnecting and closes the client for good', async () => {
+  let connections = 0;
+  await withServer(
+    (ws) => {
+      ws.send(
+        JSON.stringify({ type: 'error', message: 'this token grants watch only; the session is closed' }),
+      );
+      ws.close(1008);
+    },
+    async (apiUrl) => {
+      let closed = 0;
+      const transport = await openSignalingTransport({
+        apiUrl,
+        token: 't',
+        logger: quiet,
+        reconnectDelay: 10,
+        onClosed: () => closed++,
+      });
+      try {
+        await expect(transport.request('tap', { x: 1, y: 2 })).rejects.toThrow(
+          'Connection closed: this token grants watch only; the session is closed',
+        );
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(transport.getConnectionState()).toBe('disconnected');
+        expect(closed).toBe(1);
+      } finally {
+        transport.disconnect();
+      }
+    },
+    () => connections++,
+  );
+  expect(connections).toBe(1);
+});
+
+test('a 1008 close without an error frame does not reconnect either', async () => {
+  let connections = 0;
+  await withServer(
+    (ws) => ws.close(1008),
+    async (apiUrl) => {
+      const transport = await openSignalingTransport({
+        apiUrl,
+        token: 't',
+        logger: quiet,
+        reconnectDelay: 10,
+      });
+      try {
+        await expect(transport.request('tap')).rejects.toThrow(
+          'Connection closed: the instance closed the session',
+        );
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } finally {
+        transport.disconnect();
+      }
+    },
+    () => connections++,
+  );
+  expect(connections).toBe(1);
+});
+
+test('a session refused while the client prepares rejects with the instance message', async () => {
+  await withServer(
+    (ws) => {
+      ws.send(
+        JSON.stringify({ type: 'error', message: 'this token grants watch only; the session is closed' }),
+      );
+      ws.close(1008);
+    },
+    async (apiUrl) => {
+      await expect(
+        openSignalingTransport({
+          apiUrl,
+          token: 't',
+          logger: quiet,
+          onFirstOpen: (t) => t.request('deviceInfo'),
+        }),
+      ).rejects.toThrow('this token grants watch only; the session is closed');
+    },
+  );
+});
+
+test('request ids are random UUIDs', async () => {
+  const ids: string[] = [];
+  await withServer(
+    (ws, msg) => {
+      ids.push(msg['id']);
+      ws.send(JSON.stringify({ type: 'okResult', id: msg['id'] }));
+    },
+    async (apiUrl) => {
+      const transport = await openSignalingTransport({ apiUrl, token: 't', logger: quiet });
+      try {
+        await transport.request('ok');
+        await transport.request('ok');
+      } finally {
+        transport.disconnect();
+      }
+    },
+  );
+  expect(ids).toHaveLength(2);
+  for (const id of ids)
+    expect(id).toMatch(/^ts-client-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(ids[0]).not.toBe(ids[1]);
 });
