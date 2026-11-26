@@ -109,7 +109,9 @@ export default class IosCreate extends BaseCommand {
       options: IOS_OS_VERSIONS,
     }),
     'reuse-if-exists': Flags.boolean({
-      description: 'Reuse an existing instance with matching labels; its permissions remain unchanged',
+      description:
+        'Return a running instance whose labels exactly match --label instead of creating one; ' +
+        'needs at least one --label, and the instance keeps its permissions',
       default: false,
     }),
     'install-asset': Flags.string({
