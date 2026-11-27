@@ -5,6 +5,7 @@ export { Limrun as default } from './client';
 export { type Uploadable, toFile } from './core/uploads';
 export { DeviceDetachUnavailableError } from './device-detach';
 export { SimulatorDebugSymbolsUnavailableError } from './simulator-debug-symbols';
+export { MacOSAttachUnavailableError } from './macos-attach';
 export { APIPromise } from './core/api-promise';
 export { Limrun, type ClientOptions } from './client';
 export {
@@ -157,6 +158,8 @@ export {
   type SimulatorAttachment,
   type SimulatorDeviceInfo,
   type SimulatorInstallState,
+  type MacOSAttachment,
+  type MacOSStatus,
   type XcodeBuildLog,
   type BazelBuildLog,
   type XcodeInstanceCreateParamsWithSnapshot,

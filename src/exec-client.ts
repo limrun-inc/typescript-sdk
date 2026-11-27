@@ -55,7 +55,7 @@ export type XcodeBuildExecRequest = {
     workspace?: string;
     project?: string;
     scheme?: string;
-    sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos' | 'appletvos' | 'xros';
+    sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos' | 'appletvos' | 'xros' | 'macosx';
     configuration?: 'Debug' | 'Release';
     artifactName?: string;
     /** Recompile from a clean build folder for this invocation. */

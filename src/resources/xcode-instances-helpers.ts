@@ -1,5 +1,6 @@
 import { DeviceDetachUnavailableError } from '../device-detach';
 import { SimulatorDebugSymbolsUnavailableError } from '../simulator-debug-symbols';
+import { MacOSAttachUnavailableError } from '../macos-attach';
 import { pullBuildFile } from '../internal/build-pull-file';
 import { pullResultBundle } from '../internal/result-bundle';
 import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
@@ -9,6 +10,7 @@ import {
   type XcodeInstanceCreateParams,
 } from './xcode-instances';
 import { type IosInstance, type IosInstanceCreateParams } from './ios-instances';
+import { type MacosInstance } from './macos-instances';
 import { APIPromise } from '../core/api-promise';
 import { RequestOptions } from '../internal/request-options';
 import { path } from '../internal/utils/path';
@@ -118,7 +120,12 @@ export type XcodeProjectConfig = {
   workspace?: string;
   project?: string;
   scheme?: string;
-  sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos' | 'appletvos' | 'xros';
+  /**
+   * The platform to build for. 'macosx' builds a Mac app signed to run locally, which installs
+   * on the attached macOS instance. Omit to let the instance choose: iphonesimulator, or
+   * macosx when a macOS instance is attached and no simulator is.
+   */
+  sdk?: 'iphonesimulator' | 'iphoneos' | 'watchsimulator' | 'watchos' | 'appletvos' | 'xros' | 'macosx';
   /**
    * xcodebuild configuration. Omit to use limbuild's project-type default:
    * Debug for native Xcode builds and Release for React Native / Expo builds.
@@ -386,6 +393,16 @@ export type SimulatorAttachResult = {
   installError?: string;
 };
 
+export type MacOSAttachment = {
+  apiUrl: string;
+  macosInstanceId?: string;
+};
+
+export type MacOSStatus = {
+  attached: boolean;
+  macos?: MacOSAttachment;
+};
+
 /**
  * Status of the instance's embedded Bazel Remote Build Execution stack, as
  * reported by limbuild's /rbe endpoints.
@@ -583,6 +600,19 @@ export type XcodeClient = {
 
   /** Disconnect the simulator, keeping both instances and installed apps. */
   detachSimulator: () => Promise<SimulatorStatus>;
+
+  /**
+   * Attach a macOS instance to this xcode instance. Builds for the macosx sdk then install on it
+   * and launch, sending only what changed since the previous install. Throws
+   * `MacOSAttachUnavailableError` when the instance predates macOS support.
+   */
+  attachMacOS: (macos: MacosInstance | { apiUrl: string; token: string }) => Promise<MacOSStatus>;
+
+  /** Return the attached macOS instance, if any. */
+  getMacOS: () => Promise<MacOSStatus>;
+
+  /** Disconnect the macOS instance, keeping both instances and installed apps. */
+  detachMacOS: () => Promise<MacOSStatus>;
 
   /**
    * Return the Xcode this sandbox builds with and the Xcodes installed on its node.
@@ -1185,6 +1215,51 @@ export class XcodeInstances extends GeneratedXcodeInstances {
       attachSimulator: attachSimulatorImpl,
       attachNewSimulator: attachNewSimulatorImpl,
       deleteSimulator: deleteSimulatorImpl,
+
+      async attachMacOS(macos: MacosInstance | { apiUrl: string; token: string }): Promise<MacOSStatus> {
+        let macosApiUrl: string;
+        let macosToken: string;
+        if ('status' in macos) {
+          if (!macos.status.apiUrl) {
+            throw new Error('macOS instance not ready: apiUrl is not available');
+          }
+          macosApiUrl = macos.status.apiUrl;
+          macosToken = instanceToken(macos);
+        } else {
+          macosApiUrl = macos.apiUrl;
+          macosToken = macos.token;
+        }
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/macos`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ apiUrl: macosApiUrl, token: macosToken }),
+        });
+        return readOrUnsupported<MacOSStatus>(
+          res,
+          'POST /macos',
+          (op) => new MacOSAttachUnavailableError(op),
+        );
+      },
+
+      async getMacOS(): Promise<MacOSStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/macos`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return readOrUnsupported<MacOSStatus>(res, 'GET /macos', (op) => new MacOSAttachUnavailableError(op));
+      },
+
+      async detachMacOS(): Promise<MacOSStatus> {
+        const res = await nodeProxyTransport.fetch(`${apiUrl}/macos`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return readOrUnsupported<MacOSStatus>(
+          res,
+          'DELETE /macos',
+          (op) => new MacOSAttachUnavailableError(op),
+        );
+      },
 
       async getXcode(): Promise<XcodeStatus> {
         const res = await nodeProxyTransport.fetch(`${apiUrl}/xcode`, {

@@ -106,6 +106,8 @@ export {
   type SimulatorAttachment,
   type SimulatorDeviceInfo,
   type SimulatorInstallState,
+  type MacOSAttachment,
+  type MacOSStatus,
   type RbeInstallResult,
   type XcodeBuildLog,
   type BazelBuildLog,
