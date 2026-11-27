@@ -64,6 +64,27 @@ jobs:
       - name: Run tests
         run: ./scripts/test
 
+  python:
+    timeout-minutes: 10
+    name: python
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/python
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+
+      - name: Test
+        run: uv run pytest
+
   cli:
     timeout-minutes: 10
     name: cli
