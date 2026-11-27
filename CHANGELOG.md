@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.79.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.3...v0.79.4) (2026-11-27)
+
+
+### Features
+
+* **ui:** frame a 2D macOS stream in the MacBook's lid alone ([#765](https://github.com/limrun-inc/typescript-sdk/issues/765)) ([5835980](https://github.com/limrun-inc/typescript-sdk/commit/583598021e17f59edeba5c27a654d66472d0a108))
+* **ui:** frame a macOS stream in the MacBook's lid alone ([#762](https://github.com/limrun-inc/typescript-sdk/issues/762)) ([7fd1d15](https://github.com/limrun-inc/typescript-sdk/commit/7fd1d15ba86f5bdfdc0aba7eceaeaa2298346993))
+* **xcode:** attach a macOS instance and build Mac apps ([#766](https://github.com/limrun-inc/typescript-sdk/issues/766)) ([0a5b703](https://github.com/limrun-inc/typescript-sdk/commit/0a5b703feeaf7ebdc87391dca10515a0ae53f54c))
+
+
+### Chores
+
+* **cli:** release 0.65.2 with SDK 0.79.3 ([#763](https://github.com/limrun-inc/typescript-sdk/issues/763)) ([3a7fefe](https://github.com/limrun-inc/typescript-sdk/commit/3a7fefe748df4d741f5160621b2cdef25929656c))
+
 ## [0.79.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.2...v0.79.3) (2026-11-27)
 
 
