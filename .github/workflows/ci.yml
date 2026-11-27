@@ -104,3 +104,45 @@ jobs:
       - name: Check package contents
         working-directory: packages/cli
         run: npm pack --dry-run
+
+  # The oldest Node the SDK and CLI support. undici declares 20.18.1, so yarn 1
+  # refuses to install without --ignore-engines, while npm only warns.
+  node-minimum:
+    timeout-minutes: 15
+    name: node-minimum
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '20.9.0'
+
+      - name: Bootstrap root SDK
+        run: ./scripts/bootstrap --ignore-engines
+
+      - name: Build root SDK
+        run: ./scripts/build
+
+      - name: Run SDK tests
+        run: ./scripts/test
+
+      - name: Install CLI dependencies
+        working-directory: packages/cli
+        run: yarn install --frozen-lockfile --ignore-engines
+
+      - name: Build CLI
+        working-directory: packages/cli
+        run: yarn build
+
+      - name: Test CLI
+        working-directory: packages/cli
+        run: yarn test
+
+      - name: Smoke test lim
+        working-directory: packages/cli
+        run: node bin/run.js --version && node bin/run.js run --help
