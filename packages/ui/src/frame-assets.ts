@@ -39,7 +39,7 @@ export const defaultRemoteControlAssets: RemoteControlAssets = {
   macos: {
     frame: macbookFrame,
     // The render's screen opening and its notch's share, which render-macbook-frame.ts reports.
-    screen: { left: 0.022646, top: 0.032015, width: 0.954662, height: 0.869369, notch: 0.033124 },
+    screen: { left: 0.022646, top: 0.032251, width: 0.954662, height: 0.875787, notch: 0.033124 },
     model: () => import('./macbook-model').then((module) => module.default),
   },
 };
