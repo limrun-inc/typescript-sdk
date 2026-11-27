@@ -99,11 +99,11 @@ camera.lookAt(target);
 camera.updateMatrixWorld(true);
 camera.updateProjectionMatrix();
 
-// Bounds of a set of meshes on the camera's image, in normalized device coordinates.
+// Bounds of the meshes that draw, on the camera's image, in normalized device coordinates.
 const viewBounds = (root: THREE.Object3D) => {
   const box = new THREE.Box2(new THREE.Vector2(Infinity, Infinity), new THREE.Vector2(-Infinity, -Infinity));
   const point = new THREE.Vector3();
-  root.traverse((object) => {
+  root.traverseVisible((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     const position = object.geometry.getAttribute('position');
     for (let i = 0; i < position.count; i++) {
