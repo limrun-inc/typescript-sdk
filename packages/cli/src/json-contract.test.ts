@@ -870,6 +870,7 @@ describe.each(['android', 'ios'])('%s foreground launch lifecycle', (platform) =
 
 test.each([
   ['xcode/detach-simulator', 'detachSimulator'],
+  ['xcode/detach-macos', 'detachMacOS'],
   ['gradle/detach-emulator', 'detachEmulator'],
 ])('%s returns detached status without deleting instances', async (name, method) => {
   client[method!] = jest.fn().mockResolvedValue({ attached: false });
@@ -879,6 +880,32 @@ test.each([
   expect(JSON.parse(stdout)).toEqual({ attached: false });
   expect(cmd.client.xcodeInstances.delete).not.toHaveBeenCalled();
   expect(cmd.client.gradleInstances.delete).not.toHaveBeenCalled();
+});
+
+test('xcode attach-macos sends the macOS instance and never prints its token', async () => {
+  client.attachMacOS = jest.fn().mockResolvedValue({
+    attached: true,
+    macos: { apiUrl: 'https://mac.example.test/v1/macos_abc/api', macosInstanceId: 'macos_abc' },
+  });
+  const c = command('xcode/attach-macos', { macosId: 'macos_abc' });
+  c.resolveMacosTarget = () => ({
+    id: 'macos_abc',
+    type: 'macos',
+    apiUrl: 'https://mac.example.test/v1/macos_abc/api',
+    token: 'secret',
+  });
+  await c.run();
+  expect(client.attachMacOS).toHaveBeenCalledWith({
+    apiUrl: 'https://mac.example.test/v1/macos_abc/api',
+    token: 'secret',
+  });
+  expect(JSON.parse(stdout)).toEqual({
+    xcodeInstanceId: target.id,
+    macosInstanceId: 'macos_abc',
+    attached: true,
+    macos: { apiUrl: 'https://mac.example.test/v1/macos_abc/api', macosInstanceId: 'macos_abc' },
+  });
+  expect(stdout + stderr).not.toContain('secret');
 });
 
 describe('xcode test NDJSON', () => {

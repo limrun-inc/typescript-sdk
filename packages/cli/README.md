@@ -688,9 +688,20 @@ lim xcode list            # List all ready Xcode instances
 lim xcode get <ID>        # Get details of a specific instance
 lim xcode delete <ID>     # Delete an instance
 lim xcode attach-simulator <IOS_ID> --id <XCODE_ID>
+lim xcode attach-macos <MACOS_ID> --id <XCODE_ID>   # Install and launch Mac builds on a macOS instance
+lim xcode detach-macos --id <XCODE_ID>
 lim xcode version         # Xcode the sandbox builds with
 lim xcode use xcode@27    # Prefer an Xcode version for this workspace (switches the sandbox now)
 lim xcode version list    # Xcode versions the sandbox can build with
+```
+
+To build a Mac app, attach a macOS instance and build for `macosx`. Each build installs the app in
+the macOS instance's `~/Applications` and launches it, sending only the files that changed since
+the previous build. While a macOS instance is attached and no simulator is, `macosx` is the default.
+
+```bash
+lim xcode attach-macos <MACOS_ID> --id <XCODE_ID>
+lim xcode build --sdk macosx
 ```
 
 ### Disk snapshots

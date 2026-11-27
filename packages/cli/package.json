@@ -114,7 +114,7 @@
         "description": "Manage and run private tunnels that instances name at create time: create, list, update, rotate, delete, run"
       },
       "xcode": {
-        "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build, test, run, pull-file, use, tools, rbe, attach-simulator, detach-simulator, version"
+        "description": "Execute any task on remote XCode sandboxes: create, list, get, delete, sync, build, test, run, pull-file, use, tools, rbe, attach-simulator, detach-simulator, attach-macos, detach-macos, version"
       },
       "bazel": {
         "description": "Build with Bazel on Limrun's build plane: setup"

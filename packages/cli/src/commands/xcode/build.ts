@@ -120,8 +120,9 @@ export default class XcodeBuild extends BaseCommand {
       default: false,
     }),
     sdk: Flags.string({
-      description: 'SDK family to build for.',
-      options: ['iphonesimulator', 'iphoneos', 'watchsimulator', 'watchos', 'appletvos', 'xros'],
+      description:
+        'SDK family to build for. macosx builds a Mac app that installs and launches on the macOS instance attached with `lim xcode attach-macos`; it is the default while one is attached and no simulator is.',
+      options: ['iphonesimulator', 'iphoneos', 'watchsimulator', 'watchos', 'appletvos', 'xros', 'macosx'],
     }),
     'git-init': Flags.boolean({
       description:
@@ -287,7 +288,7 @@ export default class XcodeBuild extends BaseCommand {
     if (flags['dev-server-url'] && flags.configuration === 'Release') {
       this.error('--dev-server-url is only supported for Debug builds.');
     }
-    if (flags.ios && flags.sdk && DEVICE_SDKS.has(flags.sdk)) {
+    if (flags.ios && flags.sdk && (DEVICE_SDKS.has(flags.sdk) || flags.sdk === 'macosx')) {
       this.error(
         '--ios builds run on a simulator. Use --sdk iphonesimulator, --sdk watchsimulator, or omit --sdk.',
       );
@@ -579,10 +580,31 @@ export default class XcodeBuild extends BaseCommand {
       if (flags.upload && result.signedDownloadUrl) {
         this.output(`Artifact download URL: ${result.signedDownloadUrl}`);
       }
+      // A Mac build installs only on an attached macOS instance, which is also what makes the
+      // instance build for the Mac when no sdk is given.
+      let macosAttached = false;
+      if (!this.isJsonEnabled() && (!settings.sdk || settings.sdk === 'macosx')) {
+        try {
+          macosAttached = (await xcodeClient.getMacOS()).attached;
+        } catch {
+          // Old servers have no /macos endpoint.
+        }
+        if (settings.sdk === 'macosx' && !macosAttached) {
+          this.output(
+            '\nNo macOS instance is attached to this Xcode instance. Attach one to install this build ' +
+              'and have every next build installed and launched automatically:',
+          );
+          this.output(`  lim xcode attach-macos <macOS-instance-ID> --id ${target.id}`);
+        }
+      }
       // Nudge toward the attach flow after simulator builds on a bare Xcode
       // instance: an attached simulator receives this build and every next
       // one automatically.
-      if (!this.isJsonEnabled() && (!settings.sdk || settings.sdk === 'iphonesimulator')) {
+      if (
+        !this.isJsonEnabled() &&
+        (!settings.sdk || settings.sdk === 'iphonesimulator') &&
+        !(macosAttached && !settings.sdk)
+      ) {
         // Assume attached when the status can't be read (old servers have
         // no /simulator endpoint); a wrong hint is worse than none.
         let attached = true;

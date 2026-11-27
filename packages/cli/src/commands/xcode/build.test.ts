@@ -27,6 +27,7 @@ test.each([
     argv: ['--ios', '--upload-to-appstore', '--asc-app-id', '6822100611'],
     error: /cannot upload to App Store Connect/,
   },
+  { argv: ['--ios', '--sdk', 'macosx'], error: /--ios builds run on a simulator/ },
 ])('rejects invalid upload flags before authenticating: $argv', async ({ argv, error }) => {
   const parsed = await parse(argv);
   const withAuth = jest.fn();

@@ -157,6 +157,8 @@ export {
   type SimulatorAttachment,
   type SimulatorDeviceInfo,
   type SimulatorInstallState,
+  type MacOSAttachment,
+  type MacOSStatus,
   type XcodeBuildLog,
   type BazelBuildLog,
   type XcodeInstanceCreateParamsWithSnapshot,
