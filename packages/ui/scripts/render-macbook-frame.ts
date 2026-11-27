@@ -7,8 +7,8 @@
 //
 // A perspective camera looks square at the screen's center, so the screen's opening is a rectangle
 // the stream fills, while the rest of the MacBook keeps its perspective, as in a photograph. The
-// frame keeps the lid and ends a little below the hinge: the whole keyboard would shrink the screen
-// in a viewer's space, and the top of the base still shows it is a MacBook. The opening is wherever the
+// frame is the lid alone, without the base or the hinge under the lid: a keyboard below the screen
+// would shrink the screen in a viewer's space. The opening is wherever the
 // screen shows, so the notch stays in the frame over its top edge; `notch` reports the share of the
 // opening's height the notch takes; RemoteControl starts the stream at the top, under the notch.
 import * as THREE from 'three';
@@ -23,8 +23,6 @@ import { createStudioEnvironment } from '../src/components/studio-environment';
 const LID_DEGREES = 100;
 const DISTANCE = 300;
 const SCREEN_PIXELS = 2000;
-// How much of the base shows below the hinge, as a share of the screen's height.
-const BASE_SHOWN = 0.036;
 
 const params = new URLSearchParams(location.search);
 const modelUrl = params.get('model');
@@ -33,12 +31,60 @@ if (!modelUrl) throw new Error('Pass ?model=<url of the prepared GLB>.');
 
 const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
 const { scene: model } = await loader.loadAsync(modelUrl);
+const base = model.getObjectByName('macbook-base');
 const lid = model.getObjectByName('macbook-lid');
 const screen = model.getObjectByName('macbook-screen');
-if (!lid || !(screen instanceof THREE.Mesh))
-  throw new Error('The model has no macbook-lid or macbook-screen.');
+if (!base || !lid || !(screen instanceof THREE.Mesh))
+  throw new Error('The model has no macbook-base, macbook-lid or macbook-screen.');
+base.visible = false;
+// The bezel has a cutout along its bottom for the hinge, which the hinge and its cover fill and the
+// aluminium back shows through. Without them the frame is the lid's outline alone: the cover's
+// strip is clipped off under the chin, the back draws only its outside, and a piece of bezel fills
+// the cutout. Measures are in the lid's own units, from the model.
+const bezel = model.getObjectByName('Object_131');
+const cover = model.getObjectByName('Object_111');
+const back = model.getObjectByName('Object_103');
+if (!(bezel instanceof THREE.Mesh) || !(cover instanceof THREE.Mesh) || !(back instanceof THREE.Mesh))
+  throw new Error("The model has no lid bezel, hinge cover or back where it's expected.");
+const CHIN_BOTTOM = 0.09;
+const BEZEL_BOTTOM = -0.71;
+const CUTOUT_HALF_WIDTH = 41;
+const BACK_BOTTOM = -0.94;
+const aluminium = back.material as THREE.Material;
+back.material = (back.material as THREE.Material).clone();
+(back.material as THREE.Material).side = THREE.FrontSide;
+const coverClip = new THREE.Plane(new THREE.Vector3(0, 1, 0), -CHIN_BOTTOM);
+cover.material = (cover.material as THREE.Material).clone();
+(cover.material as THREE.Material).clippingPlanes = [coverClip];
+const fill = new THREE.Mesh(
+  new THREE.PlaneGeometry(2 * CUTOUT_HALF_WIDTH, CHIN_BOTTOM - BEZEL_BOTTOM),
+  bezel.material as THREE.Material,
+);
+fill.position.set(0, (CHIN_BOTTOM + BEZEL_BOTTOM) / 2, -1.8);
+lid.add(fill);
+const backEdge = new THREE.Mesh(
+  new THREE.PlaneGeometry(2 * CUTOUT_HALF_WIDTH, BEZEL_BOTTOM - BACK_BOTTOM),
+  aluminium,
+);
+backEdge.position.set(0, (BEZEL_BOTTOM + BACK_BOTTOM) / 2, -1.85);
+lid.add(backEdge);
+// The hinge itself is the lid's other parts under the screen that are narrower than it.
+const lidBox = (object: THREE.Mesh) => {
+  object.geometry.computeBoundingBox();
+  return object.geometry.boundingBox!.clone().applyMatrix4(object.matrix);
+};
+const screenInLid = lidBox(screen);
+for (const object of lid.children) {
+  if (!(object instanceof THREE.Mesh) || object === screen || object === fill || object === backEdge)
+    continue;
+  const box = lidBox(object);
+  if (box.max.y < screenInLid.min.y && box.max.x - box.min.x < screenInLid.max.x - screenInLid.min.x) {
+    object.visible = false;
+  }
+}
 lid.rotation.x = lidRotation(LID_DEGREES);
 model.updateMatrixWorld(true);
+coverClip.applyMatrix4(lid.matrixWorld);
 
 // The screen faces along the lid's turned z axis; its up is the lid's turned y axis.
 const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), lid.rotation.x);
@@ -53,11 +99,11 @@ camera.lookAt(target);
 camera.updateMatrixWorld(true);
 camera.updateProjectionMatrix();
 
-// Bounds of a set of meshes on the camera's image, in normalized device coordinates.
+// Bounds of the meshes that draw, on the camera's image, in normalized device coordinates.
 const viewBounds = (root: THREE.Object3D) => {
   const box = new THREE.Box2(new THREE.Vector2(Infinity, Infinity), new THREE.Vector2(-Infinity, -Infinity));
   const point = new THREE.Vector3();
-  root.traverse((object) => {
+  root.traverseVisible((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     const position = object.geometry.getAttribute('position');
     for (let i = 0; i < position.count; i++) {
@@ -70,12 +116,9 @@ const viewBounds = (root: THREE.Object3D) => {
 const frame = viewBounds(lid);
 const opening = viewBounds(screen);
 // The camera renders only the lid's part of its image, at the scale that makes the screen
-// SCREEN_PIXELS wide, with a margin around it, down to BASE_SHOWN below the hinge, which is the
-// lid's origin.
+// SCREEN_PIXELS wide, with a margin around it.
 const pixelsPerUnit = SCREEN_PIXELS / (opening.max.x - opening.min.x);
 frame.expandByScalar(16 / pixelsPerUnit);
-const hinge = new THREE.Vector3().setFromMatrixPosition(lid.matrixWorld).project(camera);
-frame.min.y = hinge.y - BASE_SHOWN * (opening.max.y - opening.min.y);
 const width = Math.round((frame.max.x - frame.min.x) * pixelsPerUnit);
 const height = Math.round((frame.max.y - frame.min.y) * pixelsPerUnit);
 camera.setViewOffset(
@@ -89,6 +132,7 @@ camera.setViewOffset(
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
+renderer.localClippingEnabled = true;
 renderer.setSize(width, height, false);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setClearColor(0x000000, 0);
