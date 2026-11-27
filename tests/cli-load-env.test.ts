@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { parseEnv as nodeParseEnv } from 'node:util';
 import { transformFileSync } from '@swc/core';
+
+import { parseEnv } from '../packages/cli/src/lib/load-env';
 
 const loader = transformFileSync(path.join(__dirname, '../packages/cli/src/lib/load-env.ts'), {
   jsc: { parser: { syntax: 'typescript' }, target: 'es2020' },
@@ -51,4 +54,29 @@ test.each(['from-shell', ''])('CLI preserves a shell value of %j', (value) => {
 
 test('CLI honors a custom .env path', () => {
   expect(loadEnv('LIM_ENV_TEST_VALUE=custom-file\n', undefined, true)).toEqual({ value: 'custom-file' });
+});
+
+// The CLI parses .env files itself so it runs on Node before 20.12. Every file must read the
+// same as with Node's own parser, which the CLI used before.
+test.each([
+  'A=1\nB=two words\n',
+  'export A=1',
+  'A="quoted # value" # comment',
+  "A='single \\n stays'",
+  'A="double \\n expands"',
+  'A=`back tick`',
+  'A="multi\nline"\nB=2',
+  "A='multi\nline'\nB=2",
+  'A=value # comment\nB=#hash',
+  '# comment only\n\n  A = spaced  \n',
+  'A=1\r\nB=2\r\n',
+  'A=\nB=',
+  'A=1\nA=2',
+  'A="unclosed\nB=2',
+  'A=x=y',
+  '  INDENTED=1',
+  'NO_EQUALS\nA=1',
+  'A="a"b\nC=3',
+])('parses %j like Node', (content) => {
+  expect(parseEnv(content)).toEqual({ ...nodeParseEnv(content) });
 });
