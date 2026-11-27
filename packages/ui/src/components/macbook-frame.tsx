@@ -184,15 +184,11 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       toneMapped: false,
       side: THREE.DoubleSide,
     });
-    // Above the stream, a display with a notch shows the stream's top row, which the texture's
-    // clamped edge repeats: the guest's menu bar reaching up around the notch.
-    const fillAbove = { value: false };
     screenMaterial.onBeforeCompile = (shader) => {
-      shader.uniforms['fillAbove'] = fillAbove;
-      shader.fragmentShader = `uniform bool fillAbove;\n${shader.fragmentShader}`.replace(
+      shader.fragmentShader = shader.fragmentShader.replace(
         '#include <map_fragment>',
         `#include <map_fragment>
-        if (vMapUv.x < 0.0 || vMapUv.x > 1.0 || vMapUv.y < 0.0 || (vMapUv.y > 1.0 && !fillAbove)) diffuseColor.rgb = vec3(0.0);`,
+        if (vMapUv.x < 0.0 || vMapUv.x > 1.0 || vMapUv.y < 0.0 || vMapUv.y > 1.0) diffuseColor.rgb = vec3(0.0);`,
       );
     };
     screenMaterial.customProgramCacheKey = () => 'macbook-fitted-screen';
@@ -313,7 +309,6 @@ export default function MacbookFrame(props: MacbookFrameProps) {
       if (typeof panel === 'number' && panel > 0) screenAspect = panel;
       const notchShare = importedScreen.userData['notch'];
       if (typeof notchShare === 'number' && notchShare >= 0 && notchShare < 0.5) notch = notchShare;
-      fillAbove.value = notch > 0;
       for (const resource of builtIn.splice(0)) resource.dispose();
       center();
     };

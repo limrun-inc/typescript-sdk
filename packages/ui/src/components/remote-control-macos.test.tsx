@@ -301,7 +301,6 @@ it('puts the stream in the screen opening of a rendered MacBook image', async ()
     const [dx, dy] = offsets(video.style.transform);
     expect(dx).toBeCloseTo(0, 6);
     expect(dy).toBeCloseTo(-98, 6);
-    expect(host.querySelector('canvas.rc-macbook-band')).toBeNull();
     // Black glass fills the whole opening behind the stream, where a stream of another shape
     // would leave bars.
     const glass = host.querySelector<HTMLElement>('.rc-macbook-screen')!;
@@ -317,7 +316,7 @@ it('puts the stream in the screen opening of a rendered MacBook image', async ()
   }
 });
 
-it('puts the stream right under the notch and fills the strip beside it', async () => {
+it('starts the stream at the top of a notched screen, under the notch', async () => {
   const { host, root, video } = await renderMacbookImage({
     left: 0.25,
     top: 0.1,
@@ -326,16 +325,12 @@ it('puts the stream right under the notch and fills the strip beside it', async 
     notch: 0.1,
   });
   try {
-    // The notch takes the opening's top 40 pixels, so the stream starts at 120 down the frame.
+    // The 16:10 stream, 500 × 312.5, starts at the opening's top, 80 down the frame, so the notch
+    // the image draws there covers the top of its menu bar; its bar is at the bottom.
+    expect(video.style.width).toBe('500px');
     expect(video.style.height).toBe('312.5px');
     const [, dy] = offsets(video.style.transform);
-    expect(dy).toBeCloseTo(120 + 156.25 - 400 + 22, 6);
-    // The strip runs from the opening's top to the stream's, a pixel into it.
-    const band = host.querySelector<HTMLCanvasElement>('canvas.rc-macbook-band')!;
-    expect(band.style.width).toBe('500px');
-    expect(band.style.height).toBe('41px');
-    const [, bandY] = offsets(band.style.transform);
-    expect(bandY).toBeCloseTo(80 + 20.5 - 400 + 22, 6);
+    expect(dy).toBeCloseTo(80 + 156.25 - 400 + 22, 6);
   } finally {
     await act(async () => root.unmount());
     host.remove();

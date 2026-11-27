@@ -106,23 +106,21 @@ describe('a stream on a display of another shape', () => {
     expect(corner.y).toBeCloseTo(0, 5);
   });
 
-  it('keeps a 16:10 stream below the notch, filling the band macOS leaves it', () => {
-    // The 16-inch panel is 3456 × 2234 and its notch takes the top 74 rows.
-    const below = streamFit(16 / 10, 3456 / 2234, 74 / 2234);
-    const share = 74 / 2234;
-    expect(streamPoint(0.5, 1 - share / 2, below)).toBeUndefined();
-    const topLeft = streamPoint(0, 1 - share, below)!;
+  it('fills a notched panel with a guest of its own shape, the notch over its menu bar', () => {
+    // The 16-inch panel is 3456 × 2234, and the guest draws all of it at 1728 × 1117.
+    const panel = 3456 / 2234;
+    const full = streamFit(1728 / 1117, panel, 74 / 2234);
+    const topLeft = streamPoint(0, 1, full)!;
     expect(topLeft.x).toBeCloseTo(0, 5);
     expect(topLeft.y).toBeCloseTo(0, 5);
-    const bottomRight = streamPoint(1, 0, below)!;
+    const bottomRight = streamPoint(1, 0, full)!;
     expect(bottomRight.x).toBeCloseTo(1, 5);
     expect(bottomRight.y).toBeCloseTo(1, 5);
   });
 
-  it('puts a wider stream right under the notch, its bar at the bottom', () => {
-    const share = 74 / 2234;
-    const wide = streamFit(16 / 9, 3456 / 2234, share);
-    const topLeft = streamPoint(0, 1 - share, wide)!;
+  it('starts a wider stream at the top of a notched panel, its bar at the bottom', () => {
+    const wide = streamFit(16 / 10, 3456 / 2234, 74 / 2234);
+    const topLeft = streamPoint(0, 1, wide)!;
     expect(topLeft.y).toBeCloseTo(0, 5);
     expect(streamPoint(0.5, 0.01, wide)).toBeUndefined();
   });

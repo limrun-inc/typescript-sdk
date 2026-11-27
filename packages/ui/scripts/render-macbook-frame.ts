@@ -9,7 +9,7 @@
 // the stream fills, while the rest of the MacBook keeps its perspective, as in a photograph. The
 // lid leans back, so the same camera looks down onto the keyboard. The opening is wherever the
 // screen shows, so the notch stays in the frame over its top edge; `notch` reports the share of the
-// opening's height the notch's band takes, which RemoteControl fills from the stream's menu bar.
+// opening's height the notch takes; RemoteControl starts the stream at the top, under the notch.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
