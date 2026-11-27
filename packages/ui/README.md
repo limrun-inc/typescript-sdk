@@ -21,9 +21,9 @@ logo is omitted. Pass your own images through the `assets` prop if you want fram
 A macOS guest streams inside a MacBook Pro. The default entry draws it with an image rendered from a
 3D model, with the stream in the screen's opening; `@limrun/ui/lite` draws a plainer one in CSS.
 Neither draws it when `showFrame` is false. The stream starts at the top of the screen, so the notch
-covers the top of the guest's menu bar as it does on a MacBook. A guest at 1728 × 1117, the 16-inch
-panel's shape, fills the screen; a guest of another shape keeps its own, with black glass where it
-falls short.
+covers the top of the guest's menu bar as it does on a MacBook. A guest with the 16-inch panel's
+shape, such as the 1728 × 1116 that Limrun's macOS instances draw, fills the screen; a guest of
+another shape keeps its own, with black glass where it falls short.
 
 A 2D and 3D switch above the MacBook turns it into a 3D model, like the iPhone Duo's, with the
 stream on its screen. The 3D MacBook opens its lid when it appears; set `animateLid={false}` to show
