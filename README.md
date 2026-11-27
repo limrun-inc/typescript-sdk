@@ -577,7 +577,7 @@ TypeScript >= 4.9 is supported.
 The following runtimes are supported:
 
 - Web browsers (Up-to-date Chrome, Firefox, Safari, Edge, and more)
-- Node.js 20.18.1 or later ([non-EOL](https://endoflife.date/nodejs)) versions.
+- Node.js 20.9.0 or later ([non-EOL](https://endoflife.date/nodejs)) versions. Before 20.18.1, npm warns that the `undici` dependency expects a newer Node.js, and yarn 1 needs `--ignore-engines`.
 - Deno v1.28.0 or higher.
 - Bun 1.0 or later.
 - Cloudflare Workers.
