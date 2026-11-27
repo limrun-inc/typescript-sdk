@@ -17,7 +17,7 @@
 // - `macbook-screen` is the display, under the lid, with plain black glass for a material and
 //   texture coordinates from (0, 0) at its bottom left to (1, 1) at its top right. Its extras carry
 //   the display's aspect ratio and `notch`, the share of its height the notch takes at its top, so
-//   the stream can be fitted below the notch, as macOS fits an app there.
+//   the stream can start at the top, the notch over its menu bar, as on a MacBook.
 // It drops Apple's wallpaper and the lettering under the base, and keeps the logo on the lid.
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
