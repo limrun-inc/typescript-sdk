@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.79.3](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.2...v0.79.3) (2026-11-27)
+
+
+### Features
+
+* **ui:** start a macOS stream at the top of the MacBook's screen, under the notch ([#758](https://github.com/limrun-inc/typescript-sdk/issues/758)) ([b24894d](https://github.com/limrun-inc/typescript-sdk/commit/b24894de965c2d6249325f5b7a2afd852c860b67))
+
+
+### Bug Fixes
+
+* **cli:** run on Node.js 20.9 by parsing .env files without Node 20.12 APIs ([#759](https://github.com/limrun-inc/typescript-sdk/issues/759)) ([dd45508](https://github.com/limrun-inc/typescript-sdk/commit/dd45508a018b5a64ac648074818f545f6d8ae514))
+* **ui:** load the 3D MacBook under a content security policy without WebAssembly ([#757](https://github.com/limrun-inc/typescript-sdk/issues/757)) ([678aede](https://github.com/limrun-inc/typescript-sdk/commit/678aede5a413f32c92ed5a3db21839271aa2c29e))
+
+
+### Chores
+
+* **cli:** release 0.65.1 with SDK 0.79.2 ([#752](https://github.com/limrun-inc/typescript-sdk/issues/752)) ([a66df28](https://github.com/limrun-inc/typescript-sdk/commit/a66df284c17a5020b6903851486659f1a4d6b73b))
+* release 0.79.3 ([#761](https://github.com/limrun-inc/typescript-sdk/issues/761)) ([6ba96fc](https://github.com/limrun-inc/typescript-sdk/commit/6ba96fc873679b7433d738318bd7e3a76502faed))
+
 ## [0.79.2](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.1...v0.79.2) (2026-11-26)
 
 
