@@ -280,11 +280,8 @@ export default function MacbookFrame(props: MacbookFrameProps) {
     // A prepared model replaces the built-in one once it loads; until then, or if it fails, the
     // built-in one stays.
     const loadModel = async (source: RemoteControlModel) => {
-      const [{ GLTFLoader }, { MeshoptDecoder }] = await Promise.all([
-        import('three/addons/loaders/GLTFLoader.js'),
-        import('three/addons/libs/meshopt_decoder.module.js'),
-      ]);
-      const { scene: imported } = await loadGltf(new GLTFLoader().setMeshoptDecoder(MeshoptDecoder), source);
+      const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+      const { scene: imported } = await loadGltf(new GLTFLoader(), source);
       const loaded: { dispose(): void }[] = [];
       imported.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;

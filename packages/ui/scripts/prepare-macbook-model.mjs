@@ -21,7 +21,7 @@
 // It drops Apple's wallpaper and the lettering under the base, and keeps the logo on the lid.
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { dedup, meshopt, prune, textureCompress, weld } from '@gltf-transform/functions';
+import { dedup, prune, quantize, reorder, textureCompress, weld } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
 import sharp from 'sharp';
 
@@ -256,7 +256,10 @@ await document.transform(
   dedup(),
   weld(),
   textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [1024, 1024] }),
-  meshopt({ encoder: MeshoptEncoder, level: 'medium' }),
+  // Reordered and quantized, but not meshopt-compressed: its decoder needs WebAssembly, which a
+  // page's content security policy may refuse, and the bundled model must load on any page.
+  reorder({ encoder: MeshoptEncoder }),
+  quantize(),
 );
 await io.write(output, document);
 console.log(
