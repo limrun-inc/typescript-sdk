@@ -24,12 +24,15 @@ Neither draws it when `showFrame` is false.
 
 A 2D and 3D switch above the MacBook turns it into a 3D model, like the iPhone Duo's, with the
 stream on its screen. The 3D MacBook opens its lid when it appears; set `animateLid={false}` to show
-it open from the start. The default entry bundles the 3D model, about 1.5 MB, in a chunk of its own.
-Your bundler splits it out with three.js, and a browser downloads them only when a viewer picks 3D,
-so the 2D stream's first frame never waits for them. The lite entry has no model and draws a
-simpler built-in MacBook in 3D.
+it open from the start. The default entry bundles the 3D model, about 3.3 MB or 1.3 MB gzipped, in a
+chunk of its own. Your bundler splits it out with three.js, and a browser downloads them only when a
+viewer picks 3D, so the 2D stream's first frame never waits for them. The model needs no
+WebAssembly, so it loads under a content security policy without `'wasm-unsafe-eval'`. The lite
+entry has no model and draws a simpler built-in MacBook in 3D.
 
-To serve the model yourself, or another prepared one, pass its URL as `macbookModelUrl`.
+To serve the model yourself, or another prepared one, pass its URL as `macbookModelUrl`. A model
+compressed with `EXT_meshopt_compression` also loads, but its decoder is WebAssembly, so the page's
+policy must allow `'wasm-unsafe-eval'`.
 `scripts/prepare-macbook-model.mjs` makes one from the source model and lists the nodes the 3D
 MacBook expects, and `scripts/render-macbook-frame.ts` renders the 2D image from it.
 
