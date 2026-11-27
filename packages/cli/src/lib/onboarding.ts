@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { execFile, execFileSync } from 'child_process';
 import { promisify } from 'util';
-import { parseEnv } from 'node:util';
 
+import { parseEnv } from './load-env';
 import { readConfig } from './config';
 import {
   AGENTS,

@@ -74,7 +74,7 @@ use the caller's credentials.
 
 ## Installation
 
-Installing through npm or npx requires Node.js 20.18.1 or later.
+Installing through npm or npx requires Node.js 20.9.0 or later. Before 20.18.1, npm warns that the `undici` dependency expects a newer Node.js; the CLI still works.
 
 ```bash
 # npm
