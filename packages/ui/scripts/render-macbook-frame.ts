@@ -7,7 +7,9 @@
 //
 // A perspective camera looks square at the screen's center, so the screen's opening is a rectangle
 // the stream fills, while the rest of the MacBook keeps its perspective, as in a photograph. The
-// lid leans back, so the same camera looks down onto the keyboard. The opening is wherever the
+// frame keeps the lid and ends at the hinge: the whole keyboard would shrink the screen in a
+// viewer's space. The camera, above the hinge, sees the base's back edge between the lid and the
+// keys, and that sliver still shows it is a MacBook. The opening is wherever the
 // screen shows, so the notch stays in the frame over its top edge; `notch` reports the share of the
 // opening's height the notch takes; RemoteControl starts the stream at the top, under the notch.
 import * as THREE from 'three';
@@ -64,12 +66,13 @@ const viewBounds = (root: THREE.Object3D) => {
   });
   return box;
 };
-const frame = viewBounds(model);
+const frame = viewBounds(lid);
 const opening = viewBounds(screen);
-// The camera renders only the MacBook's part of its image, at the scale that makes the screen
-// SCREEN_PIXELS wide, with a margin around it.
+// The camera renders only the lid's part of its image, at the scale that makes the screen
+// SCREEN_PIXELS wide, with a margin around it, down to the hinge, which is the lid's origin.
 const pixelsPerUnit = SCREEN_PIXELS / (opening.max.x - opening.min.x);
 frame.expandByScalar(16 / pixelsPerUnit);
+frame.min.y = new THREE.Vector3().setFromMatrixPosition(lid.matrixWorld).project(camera).y;
 const width = Math.round((frame.max.x - frame.min.x) * pixelsPerUnit);
 const height = Math.round((frame.max.y - frame.min.y) * pixelsPerUnit);
 camera.setViewOffset(
