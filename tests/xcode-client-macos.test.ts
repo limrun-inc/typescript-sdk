@@ -1,4 +1,4 @@
-import Limrun, { MacOSAttachUnavailableError } from '@limrun/api';
+import Limrun from '@limrun/api';
 import { nodeProxyTransport } from '@limrun/api/internal/proxy-transport';
 
 const originalFetch = nodeProxyTransport.fetch;
@@ -60,15 +60,6 @@ describe('xcode client macOS helpers', () => {
       method: 'DELETE',
       headers: { Authorization: 'Bearer xcode-token' },
     });
-  });
-
-  test('a sandbox without macOS support is not mistaken for a missing one', async () => {
-    nodeProxyTransport.fetch = jest.fn(async () => new Response('not found', { status: 404 }));
-    const xcode = await xcodeClient();
-
-    const failure = xcode.attachMacOS({ apiUrl: 'https://mac.example.test', token: 't' });
-    await expect(failure).rejects.toBeInstanceOf(MacOSAttachUnavailableError);
-    await expect(failure).rejects.not.toBeInstanceOf(Limrun.NotFoundError);
   });
 });
 

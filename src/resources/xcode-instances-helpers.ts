@@ -1,6 +1,5 @@
 import { DeviceDetachUnavailableError } from '../device-detach';
 import { SimulatorDebugSymbolsUnavailableError } from '../simulator-debug-symbols';
-import { MacOSAttachUnavailableError } from '../macos-attach';
 import { pullBuildFile } from '../internal/build-pull-file';
 import { pullResultBundle } from '../internal/result-bundle';
 import { normalizeAssetUpload, type BuildUpload } from '../lib/asset-permissions';
@@ -603,8 +602,7 @@ export type XcodeClient = {
 
   /**
    * Attach a macOS instance to this xcode instance. Builds for the macosx sdk then install on it
-   * and launch, sending only what changed since the previous install. Throws
-   * `MacOSAttachUnavailableError` when the instance predates macOS support.
+   * and launch, sending only what changed since the previous install.
    */
   attachMacOS: (macos: MacosInstance | { apiUrl: string; token: string }) => Promise<MacOSStatus>;
 
@@ -1234,11 +1232,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ apiUrl: macosApiUrl, token: macosToken }),
         });
-        return readOrUnsupported<MacOSStatus>(
-          res,
-          'POST /macos',
-          (op) => new MacOSAttachUnavailableError(op),
-        );
+        return readJsonResponse<MacOSStatus>(res, 'POST /macos');
       },
 
       async getMacOS(): Promise<MacOSStatus> {
@@ -1246,7 +1240,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           method: 'GET',
           headers: { Authorization: `Bearer ${token}` },
         });
-        return readOrUnsupported<MacOSStatus>(res, 'GET /macos', (op) => new MacOSAttachUnavailableError(op));
+        return readJsonResponse<MacOSStatus>(res, 'GET /macos');
       },
 
       async detachMacOS(): Promise<MacOSStatus> {
@@ -1254,11 +1248,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
-        return readOrUnsupported<MacOSStatus>(
-          res,
-          'DELETE /macos',
-          (op) => new MacOSAttachUnavailableError(op),
-        );
+        return readJsonResponse<MacOSStatus>(res, 'DELETE /macos');
       },
 
       async getXcode(): Promise<XcodeStatus> {
