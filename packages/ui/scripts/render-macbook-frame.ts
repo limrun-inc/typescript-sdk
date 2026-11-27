@@ -7,7 +7,8 @@
 //
 // A perspective camera looks square at the screen's center, so the screen's opening is a rectangle
 // the stream fills, while the rest of the MacBook keeps its perspective, as in a photograph. The
-// lid leans back, so the same camera looks down onto the keyboard. The opening is wherever the
+// frame keeps the lid and ends a little below the hinge: the whole keyboard would shrink the screen
+// in a viewer's space, and the top of the base still shows it is a MacBook. The opening is wherever the
 // screen shows, so the notch stays in the frame over its top edge; `notch` reports the share of the
 // opening's height the notch takes; RemoteControl starts the stream at the top, under the notch.
 import * as THREE from 'three';
@@ -22,6 +23,8 @@ import { createStudioEnvironment } from '../src/components/studio-environment';
 const LID_DEGREES = 100;
 const DISTANCE = 300;
 const SCREEN_PIXELS = 2000;
+// How much of the base shows below the hinge, as a share of the screen's height.
+const BASE_SHOWN = 0.036;
 
 const params = new URLSearchParams(location.search);
 const modelUrl = params.get('model');
@@ -64,12 +67,15 @@ const viewBounds = (root: THREE.Object3D) => {
   });
   return box;
 };
-const frame = viewBounds(model);
+const frame = viewBounds(lid);
 const opening = viewBounds(screen);
-// The camera renders only the MacBook's part of its image, at the scale that makes the screen
-// SCREEN_PIXELS wide, with a margin around it.
+// The camera renders only the lid's part of its image, at the scale that makes the screen
+// SCREEN_PIXELS wide, with a margin around it, down to BASE_SHOWN below the hinge, which is the
+// lid's origin.
 const pixelsPerUnit = SCREEN_PIXELS / (opening.max.x - opening.min.x);
 frame.expandByScalar(16 / pixelsPerUnit);
+const hinge = new THREE.Vector3().setFromMatrixPosition(lid.matrixWorld).project(camera);
+frame.min.y = hinge.y - BASE_SHOWN * (opening.max.y - opening.min.y);
 const width = Math.round((frame.max.x - frame.min.x) * pixelsPerUnit);
 const height = Math.round((frame.max.y - frame.min.y) * pixelsPerUnit);
 camera.setViewOffset(
