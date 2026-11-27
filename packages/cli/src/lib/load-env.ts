@@ -7,14 +7,15 @@ export function parseEnv(content: string): Record<string, string> {
   const env: Record<string, string> = {};
   const lines = content.replace(/\r/g, '').split('\n');
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!.trim();
-    if (line === '' || line.startsWith('#')) continue;
+    // Only leading space is dropped here: a quoted value keeps the spaces inside its quotes.
+    const line = lines[i]!.trimStart();
+    if (line.trim() === '' || line.startsWith('#')) continue;
     const equal = line.indexOf('=');
     if (equal < 0) continue;
     let key = line.slice(0, equal).trim();
     if (key.startsWith('export ')) key = key.slice('export '.length).trim();
     if (key === '') continue;
-    const raw = line.slice(equal + 1).trim();
+    const raw = line.slice(equal + 1).trimStart();
     const quote = raw[0];
     if (quote === '"' || quote === "'" || quote === '`') {
       // A quoted value may span lines until its closing quote.

@@ -57,8 +57,8 @@ test('CLI honors a custom .env path', () => {
 });
 
 // The CLI parses .env files itself so it runs on Node before 20.12. Every file must read the
-// same as with Node's own parser, which the CLI used before.
-test.each([
+// same as with Node's own parser, which the CLI used before and which older Node lacks.
+(typeof nodeParseEnv === 'function' ? test.each : test.skip.each)([
   'A=1\nB=two words\n',
   'export A=1',
   'A="quoted # value" # comment',
@@ -77,6 +77,10 @@ test.each([
   '  INDENTED=1',
   'NO_EQUALS\nA=1',
   'A="a"b\nC=3',
+  'A="trailing   \nnext"\nB=2',
+  "A='trailing   \nnext'\nB=2",
+  'A="unclosed   \nB=2',
+  'A=unquoted   \nB=2',
 ])('parses %j like Node', (content) => {
   expect(parseEnv(content)).toEqual({ ...nodeParseEnv(content) });
 });
