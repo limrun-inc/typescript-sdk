@@ -122,6 +122,53 @@ test.each([[], ['--expo-no-clean'], ['--clean'], ['--expo-no-clean', '--clean']]
   },
 );
 
+test.each([false, true])('passes hot-reload=%s to the SDK', async (hotReload) => {
+  const { flags } = await parse(hotReload ? ['--hot-reload'] : []);
+  const proc = Object.assign(Promise.resolve({ exitCode: 0 }), {
+    command: { on: jest.fn() },
+    stdout: { on: jest.fn() },
+    stderr: { on: jest.fn() },
+  });
+  const xcodebuild = jest.fn((_config: unknown, _options: import('@limrun/api').XcodeBuildOptions) => proc);
+  const command = Object.assign(Object.create(XcodeBuild.prototype), {
+    parse: async () => ({ args: { path: directory }, flags }),
+    setParsedFlags: jest.fn(),
+    withAuth: async (run: () => Promise<void>) => run(),
+    resolveXcodeTargetOrCreate: async () => ({ type: 'xcode', id: 'sandbox_test' }),
+    applyBuildCacheToTarget: jest.fn(),
+    resolveXcodeClientForWork: async () => ({ sync: async () => ({ bytesSent: 0 }), xcodebuild }),
+    info: jest.fn(),
+    isJsonEnabled: () => true,
+    outputEvent: jest.fn(),
+  });
+  await command.run();
+  expect(xcodebuild).toHaveBeenCalledTimes(1);
+  expect(xcodebuild.mock.calls[0]?.[1]?.hotReload).toBe(hotReload ? true : undefined);
+});
+
+test.each([
+  { argv: ['--hot-reload', '--configuration', 'Release'], error: /only supported for Debug builds/ },
+  { argv: ['--hot-reload', '--sdk', 'iphoneos'], error: /run on an iOS simulator/ },
+  { argv: ['--hot-reload', '--sdk', 'watchsimulator'], error: /run on an iOS simulator/ },
+  {
+    argv: ['--hot-reload', '--certificate-p12', certificatePath, '--provisioning-profile', profilePath],
+    error: /cannot use signing flags/,
+  },
+])('rejects hot-reload with $argv before authenticating', async ({ argv, error }) => {
+  const parsed = await parse(argv);
+  const withAuth = jest.fn();
+  const command = Object.assign(Object.create(XcodeBuild.prototype), {
+    parse: async () => ({ ...parsed, args: {} }),
+    setParsedFlags: jest.fn(),
+    withAuth,
+    error: (message: string) => {
+      throw new Error(message);
+    },
+  });
+  await expect(command.run()).rejects.toThrow(error);
+  expect(withAuth).not.toHaveBeenCalled();
+});
+
 test('rejects expo-no-clean with XcodeGen before authenticating', async () => {
   const parsed = await parse(['--expo-no-clean', '--xcodegen-spec', 'project.yml']);
   const withAuth = jest.fn();

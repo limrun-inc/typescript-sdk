@@ -36,6 +36,7 @@ describe('xcode client build settings', () => {
       { scheme: 'Scripty' },
       {
         gitInit: true,
+        hotReload: true,
         reactNative: { expoNoClean: true },
         buildSettings: {
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
@@ -50,12 +51,52 @@ describe('xcode client build settings', () => {
       command: 'xcodebuild',
       xcodebuild: { scheme: 'Scripty' },
       gitInit: true,
+      hotReload: true,
       reactNative: { expoNoClean: true },
       buildSettings: {
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: '$(inherited) LIMRUN',
         APP_CONFIG_DEV_LOGIN_SECRET: 'abc=def',
       },
     });
+  });
+
+  test('leaves hotReload out of the request unless it is on', async () => {
+    const bodies: unknown[] = [];
+    nodeProxyTransport.fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      if (String(input) === 'https://xcode.example.test/exec') {
+        bodies.push(JSON.parse(init?.body as string));
+        return jsonResponse({ execId: 'build-1' });
+      }
+      throw new Error(`unexpected request: ${input}`);
+    });
+    const client = new Limrun({ apiKey: 'key' });
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+
+    await xcode.xcodebuild({ scheme: 'Scripty' }, { hotReload: false });
+
+    expect(bodies).toEqual([{ command: 'xcodebuild', xcodebuild: { scheme: 'Scripty' } }]);
+  });
+
+  test.each([
+    {
+      settings: { configuration: 'Release' as const },
+      error: /hotReload is only supported for Debug builds/,
+    },
+    { settings: { sdk: 'iphoneos' as const }, error: /hotReload requires the iphonesimulator sdk/ },
+    { settings: { sdk: 'watchsimulator' as const }, error: /hotReload requires the iphonesimulator sdk/ },
+  ])('rejects hotReload with $settings before sending a request', async ({ settings, error }) => {
+    nodeProxyTransport.fetch = jest.fn();
+    const client = new Limrun({ apiKey: 'key' });
+    const xcode = await client.xcodeInstances.createClient({
+      apiUrl: 'https://xcode.example.test',
+      token: 'xcode-token',
+    });
+
+    expect(() => xcode.xcodebuild(settings, { hotReload: true })).toThrow(error);
+    expect(nodeProxyTransport.fetch).not.toHaveBeenCalled();
   });
 });
 
