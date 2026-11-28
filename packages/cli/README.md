@@ -704,6 +704,20 @@ lim xcode attach-macos <MACOS_ID> --id <XCODE_ID>
 lim xcode build --sdk macosx
 ```
 
+To see Swift edits without restarting the app, build with `--hot-reload` while a simulator is
+attached. The first build installs and launches the app as usual. When a later `--hot-reload` build
+changed only Swift code, the running app shows the edit as the build ends and keeps its state; any
+other build, such as one that changes a resource or a type's stored properties, is installed and
+launched. Lines starting with `Hot reload:` in the build output say which happened.
+
+```bash
+lim xcode build ./MyProject --ios --hot-reload
+```
+
+It applies to Debug builds for the iOS simulator. Code that already ran, such as app startup, and
+closures created before a reload keep their old behavior until the app restarts. React Native and
+Expo projects are built normally, because Fast Refresh already shows their JavaScript edits.
+
 ### Disk snapshots
 
 If a snapshot cannot be restored, including a checksum mismatch or download

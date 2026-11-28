@@ -317,6 +317,22 @@ export type XcodeBuildOptions = {
    * dependency resolution, and xcodebuild.
    */
   gitInit?: boolean;
+  /**
+   * Build a Debug iOS simulator app whose Swift code later builds can replace
+   * while it runs. When a later build with this option changed only Swift
+   * code, the app on the attached simulator shows the edit as the build ends
+   * and keeps its state; any other build is installed and launched as usual.
+   * Lines starting with "Hot reload:" in the build output say which happened.
+   *
+   * Needs an attached simulator; without one the build is a normal Debug
+   * build. Only the iphonesimulator sdk and the Debug configuration are
+   * supported, and the configuration defaults to Debug. React Native and Expo
+   * projects are built normally: Fast Refresh already shows their JavaScript
+   * edits. Code that already ran, such as app startup, and closures created
+   * before a reload keep their old behavior until the app restarts. Older
+   * limbuild servers silently ignore this option.
+   */
+  hotReload?: boolean;
   /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
   /**
@@ -1099,6 +1115,12 @@ export class XcodeInstances extends GeneratedXcodeInstances {
         if (options?.reactNative?.devServerURL && settings?.configuration === 'Release') {
           throw new Error('reactNative.devServerURL is only supported for Debug builds');
         }
+        if (options?.hotReload && settings?.configuration === 'Release') {
+          throw new Error('hotReload is only supported for Debug builds');
+        }
+        if (options?.hotReload && settings?.sdk !== undefined && settings.sdk !== 'iphonesimulator') {
+          throw new Error('hotReload requires the iphonesimulator sdk');
+        }
         if (settings?.onlyTesting?.length && settings?.skipTesting?.length) {
           throw new Error('onlyTesting and skipTesting are mutually exclusive; pass one');
         }
@@ -1150,6 +1172,7 @@ export class XcodeInstances extends GeneratedXcodeInstances {
           ...(options?.envFromSecret && { envFromSecret: options.envFromSecret }),
           ...(options?.fileFromSecret && { fileFromSecret: options.fileFromSecret }),
           ...(options?.gitInit !== undefined && { gitInit: options.gitInit }),
+          ...(options?.hotReload && { hotReload: true }),
           ...(options?.logProcessor && { logProcessor: options.logProcessor }),
           ...(options?.webhook && { webhook: options.webhook }),
         };

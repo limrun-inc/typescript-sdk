@@ -135,6 +135,11 @@ export type XcodeBuildExecRequest = {
   envFromSecret?: Record<string, string>;
   fileFromSecret?: Record<string, string>;
   gitInit?: boolean;
+  /**
+   * Build a Debug simulator app that later builds with this option can update
+   * in place while it runs. See XcodeBuildOptions.hotReload.
+   */
+  hotReload?: boolean;
   /** How xcodebuild stdout is processed before streaming. Defaults to 'xcbeautify'. */
   logProcessor?: 'xcbeautify' | 'none';
   assetUpload?: AssetUpload;

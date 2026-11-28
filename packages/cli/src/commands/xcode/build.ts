@@ -67,6 +67,7 @@ export default class XcodeBuild extends BaseCommand {
     '<%= config.bin %> xcode build --scheme MyApp --workspace MyApp.xcworkspace',
     '<%= config.bin %> xcode build --snapshot-key myapp-pr51 --snapshot-restore-keys "myapp-pr51,myapp-main"',
     '<%= config.bin %> xcode build --configuration Debug',
+    '<%= config.bin %> xcode build ./MyProject --ios --hot-reload',
     '<%= config.bin %> xcode build --xcode-version 27',
     '<%= config.bin %> xcode build ./ExpoApp --configuration Debug --dev-server-url https://abc123.exp.direct',
     '<%= config.bin %> xcode build ./repo --expo-app-dir apps/mobile --configuration Debug --dev-server-url "myapp://expo-development-client/?url=http%3A%2F%2F10.244.7.112%3A57090"',
@@ -127,6 +128,11 @@ export default class XcodeBuild extends BaseCommand {
     'git-init': Flags.boolean({
       description:
         'Run git init in the synced workspace before project generation, dependency resolution, and xcodebuild.',
+      default: false,
+    }),
+    'hot-reload': Flags.boolean({
+      description:
+        'Build a Debug iOS simulator app that later --hot-reload builds can update while it runs. When a later build changed only Swift code, the app on the attached simulator shows the edit as the build ends and keeps its state; any other build is installed and launched as usual, and the build output says which. Needs an attached simulator. Not for Release or device builds. React Native and Expo projects are built normally, since Fast Refresh already shows their JavaScript edits.',
       default: false,
     }),
     'log-processor': Flags.string({
@@ -288,6 +294,15 @@ export default class XcodeBuild extends BaseCommand {
     if (flags['dev-server-url'] && flags.configuration === 'Release') {
       this.error('--dev-server-url is only supported for Debug builds.');
     }
+    if (flags['hot-reload'] && flags.configuration === 'Release') {
+      this.error('--hot-reload is only supported for Debug builds.');
+    }
+    if (flags['hot-reload'] && flags.sdk && flags.sdk !== 'iphonesimulator') {
+      this.error('--hot-reload builds run on an iOS simulator. Use --sdk iphonesimulator, or omit --sdk.');
+    }
+    if (flags['hot-reload'] && (hasSigningFlags(flags) || hasCloudSigningFlags(flags))) {
+      this.error('--hot-reload builds run on an iOS simulator and cannot use signing flags.');
+    }
     if (flags.ios && flags.sdk && (DEVICE_SDKS.has(flags.sdk) || flags.sdk === 'macosx')) {
       this.error(
         '--ios builds run on a simulator. Use --sdk iphonesimulator, --sdk watchsimulator, or omit --sdk.',
@@ -360,6 +375,9 @@ export default class XcodeBuild extends BaseCommand {
       await this.ensureSecretPermissions(id, options.envFromSecret, options.fileFromSecret);
       if (flags['git-init']) {
         options.gitInit = true;
+      }
+      if (flags['hot-reload']) {
+        options.hotReload = true;
       }
       if (flags['log-processor']) {
         options.logProcessor = flags['log-processor'] as XcodeBuildOptions['logProcessor'];
