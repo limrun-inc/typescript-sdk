@@ -781,7 +781,8 @@ describe('headless device stream', () => {
   });
   it.each([
     ['iOS', { url: 'wss://host/ios_test', token: 'secret' }, true],
-    ['Android', { url: 'wss://host/android_test', token: 'secret' }, false],
+    ['Android', { url: 'wss://host/android_test', token: 'secret' }, true],
+    ['macOS', { platform: 'macos', url: 'wss://host/macos_test', token: 'secret' }, false],
   ] as const)('offers to receive speaker audio on %s: %s', async (_, options, expected) => {
     const { socket, peer } = await handshake(create(options));
     expect(peer.createOffer).toHaveBeenCalledWith(expect.objectContaining({ offerToReceiveAudio: expected }));
@@ -817,19 +818,102 @@ describe('headless device stream', () => {
     client.updateOptions({ speakerMuted: true });
     expect(speakerMessages().map((m) => m.enabled)).toEqual([true, false]);
   });
-  it('keeps a muted viewer quiet and leaves Android alone', async () => {
+  it('keeps a muted viewer quiet and leaves macOS alone', async () => {
     const ios = create({ url: 'wss://host/ios_test', token: 'secret' });
     const first = await handshake(ios);
     first.socket.message({ type: 'answer', sdp: 'v=0' });
     await flush();
     expect(first.socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
-    const android = create({ url: 'wss://host/android_test', token: 'secret' });
-    const second = await handshake(android);
+    const macos = create({ platform: 'macos', url: 'wss://host/macos_test', token: 'secret' });
+    const second = await handshake(macos);
     second.socket.message({ type: 'answer', sdp: 'v=0' });
     await flush();
-    android.updateOptions({ speakerMuted: false });
+    macos.updateOptions({ speakerMuted: false });
     expect(second.socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
   });
+  it.each([false, true])(
+    'plays Android speaker audio independently of camera support (%s)',
+    async (cameraSupported) => {
+      const client = create({
+        platform: 'android',
+        url: 'wss://host/android_test',
+        token: 'secret',
+        speakerMuted: false,
+      });
+      const { socket, peer } = await handshake(client, { cameraSupported });
+      const offer = socket.sent.find((m) => m.type === 'offer')!;
+      expect(offer.speakerAudio).toBe(true);
+      expect(peer.createOffer).toHaveBeenCalledWith(expect.objectContaining({ offerToReceiveAudio: true }));
+      socket.message({ type: 'answer', sdp: 'v=0' });
+      await flush();
+      expect(socket.sent.at(-1)).toEqual({ type: 'speakerAudio', sessionId: offer.sessionId, enabled: true });
+      const audio = audioElement();
+      client.attachAudio(audio);
+      speakerTrackEvent(peer);
+      expect(audio.play).toHaveBeenCalledOnce();
+      client.updateOptions({ speakerMuted: true });
+      expect(socket.sent.at(-1)).toEqual({
+        type: 'speakerAudio',
+        sessionId: offer.sessionId,
+        enabled: false,
+      });
+      expect(Socket.sockets).toHaveLength(1);
+      expect(peer.transceivers.filter((t) => t.direction === 'sendonly')).toHaveLength(
+        cameraSupported ? 2 : 0,
+      );
+    },
+  );
+
+  it('lets Android watch-only viewers hear output without sharing their microphone', async () => {
+    const client = create({
+      platform: 'android',
+      url: 'wss://host/android_test',
+      token: 'secret',
+      watchOnly: true,
+      speakerMuted: false,
+    });
+    const { socket, peer } = await handshake(client, { cameraSupported: true });
+    socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    expect(socket.sent.at(-1)).toMatchObject({ type: 'speakerAudio', enabled: true });
+    expect(peer.transceivers.filter((t) => t.direction === 'sendonly')).toHaveLength(0);
+  });
+
+  it('restores Android speaker state after reconnect', async () => {
+    const client = create({
+      platform: 'android',
+      url: 'wss://host/android_test',
+      token: 'secret',
+      speakerMuted: false,
+    });
+    const first = await handshake(client);
+    first.socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    client.stop();
+    const second = await handshake(client);
+    second.socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    expect(second.socket.sent.at(-1)).toMatchObject({ type: 'speakerAudio', enabled: true });
+  });
+
+  it('reports capture errors only for its own speaker session and keeps video connected', async () => {
+    const onSpeakerError = vi.fn();
+    const client = create({
+      platform: 'android',
+      url: 'wss://host/android_test',
+      token: 'secret',
+      speakerMuted: false,
+      onSpeakerError,
+    });
+    const { socket, peer } = await handshake(client);
+    const offer = socket.sent.find((m) => m.type === 'offer')!;
+    socket.message({ type: 'speakerAudioError', sessionId: 'another-viewer', error: 'capture failed' });
+    expect(onSpeakerError).not.toHaveBeenCalled();
+    socket.message({ type: 'speakerAudioError', sessionId: offer.sessionId, error: 'capture failed' });
+    expect(onSpeakerError).toHaveBeenCalledWith('capture failed');
+    expect(peer.close).not.toHaveBeenCalled();
+  });
+
   it('plays speaker audio through audio elements, apart from the screen', async () => {
     const client = create({ url: 'wss://host/ios_test', token: 'secret' });
     const { peer } = await handshake(client);
@@ -849,7 +933,7 @@ describe('headless device stream', () => {
     expect((video.srcObject as unknown as Stream).getTracks()).toEqual(screen.getTracks());
   });
   it('ignores audio tracks on platforms without speaker audio', async () => {
-    const client = create({ url: 'wss://host/android_test', token: 'secret' });
+    const client = create({ platform: 'macos', url: 'wss://host/macos_test', token: 'secret' });
     const { peer } = await handshake(client);
     const audio = audioElement();
     client.attachAudio(audio);

@@ -51,7 +51,7 @@ export interface DeviceStreamLiveOptions {
   onCameraStats?: (stats: CameraStreamStats | null) => void;
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
   /**
-   * iOS only: false asks the simulator to send its speaker output, which
+   * On iOS and Android, false asks the device to send its speaker output, which
    * elements passed to `attachAudio` play in sync with the screen. Defaults to
    * true, so a stream nobody listens to carries no sound. Muting those
    * elements stays with the caller, because only a user gesture lets a
@@ -60,6 +60,8 @@ export interface DeviceStreamLiveOptions {
   speakerMuted?: boolean;
   /** The browser refused unmuted speaker audio, so an attached audio element went muted. */
   onSpeakerBlocked?: () => void;
+  /** The device could not capture speaker output; screen video continues. */
+  onSpeakerError?: (error: string) => void;
 }
 
 export type DeviceStreamOptions = DeviceStreamLiveOptions & {

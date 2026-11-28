@@ -318,8 +318,8 @@ export interface RemoteControlProps {
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
 
   /**
-   * iOS only: plays the simulator's speaker output in sync with the screen
-   * when false. Defaults to true, and the simulator sends no sound while every
+   * On iOS and Android, plays the device's speaker output in sync with the screen
+   * when false. Defaults to true, and the device sends no sound while every
    * viewer is muted. Unmute from a click handler or after other user
    * interaction, because browsers refuse sound before it. Changing it never
    * reconnects the stream.
@@ -333,6 +333,9 @@ export interface RemoteControlProps {
    * caller sets `speakerMuted` first.
    */
   onSpeakerBlocked?: () => void;
+
+  /** The device could not capture speaker output; screen video continues. */
+  onSpeakerError?: (error: string) => void;
 }
 
 export interface RemoteControlHandle {
@@ -575,6 +578,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onMicrophoneStateChange,
       speakerMuted = true,
       onSpeakerBlocked,
+      onSpeakerError,
     }: RemoteControlProps,
     ref,
   ) => {
@@ -1907,6 +1911,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     };
     const callbacksRef = useRef({
       onSpeakerBlocked,
+      onSpeakerError,
       onAxSnapshotChange,
       onAxStatusChange,
       onCameraDemandChange,
@@ -1919,6 +1924,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     });
     callbacksRef.current = {
       onSpeakerBlocked,
+      onSpeakerError,
       onAxSnapshotChange,
       onAxStatusChange,
       onCameraDemandChange,
@@ -1985,6 +1991,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onCameraStats: onCameraStats ? (...args) => callbacksRef.current.onCameraStats?.(...args) : undefined,
         onMicrophoneStateChange: (...args) => callbacksRef.current.onMicrophoneStateChange?.(...args),
         onSpeakerBlocked: () => callbacksRef.current.onSpeakerBlocked?.(),
+        onSpeakerError: (error) => callbacksRef.current.onSpeakerError?.(error),
         onTrace: latencyTraceRequested ? (...args) => callbacksRef.current.onTrace?.(...args) : undefined,
         onTerminated: () => callbacksRef.current.onTerminated?.(),
         onConnectionStateChange: (...args) => callbacksRef.current.onConnectionStateChange?.(...args),

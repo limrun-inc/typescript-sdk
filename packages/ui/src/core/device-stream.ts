@@ -134,10 +134,11 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   // Retries belong to one lifecycle; explicit start/stop invalidates its outstanding probes.
   let lifecycleGeneration = 0;
   let currentWs: WebSocket | null = null;
-  // The socket whose offer has an answer; limulator ignores speaker state for sessions it has not set up.
+  // Send speaker state only after the device has answered this socket's offer.
   let speakerSocket: WebSocket | null = null;
+  const wantsSpeakerAudio = platform === 'ios' || platform === 'android';
   const sendSpeakerState = () => {
-    if (platform !== 'ios' || !speakerSocket || speakerSocket !== currentWs) return;
+    if (!wantsSpeakerAudio || !speakerSocket || speakerSocket !== currentWs) return;
     if (speakerSocket.readyState !== WebSocket.OPEN) return;
     speakerSocket.send(
       JSON.stringify({ type: 'speakerAudio', sessionId, enabled: !(options.speakerMuted ?? true) }),
@@ -1243,7 +1244,6 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       refreshPlaybackStats();
       // Carries the simulator's speaker output, which flows only while `speakerMuted` is false.
       peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-      const wantsSpeakerAudio = platform === 'ios';
       const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
       const duoTransceiver = isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
 
@@ -1763,6 +1763,12 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
               break;
             }
             await attachMicrophone();
+            break;
+          }
+          case 'speakerAudioError': {
+            if (wantsSpeakerAudio && message.sessionId === sessionId && typeof message.error === 'string') {
+              safeInvoke('onSpeakerError', options.onSpeakerError, message.error);
+            }
             break;
           }
           case 'microphoneStartResult': {

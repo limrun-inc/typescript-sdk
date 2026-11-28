@@ -124,6 +124,35 @@ no emitted frames has no delay measurement; it is not zero. Static screens may
 have low FPS. These measurements do not include tap-to-screen latency or server
 encoding time.
 
+## Speaker output
+
+On iOS and Android, `speakerMuted={false}` plays the device's speaker output.
+It defaults to `true`. Unmute from a user interaction, such as a button click:
+
+```tsx
+<RemoteControl
+  url={url}
+  token={token}
+  speakerMuted={muted}
+  onSpeakerBlocked={() => setSoundBlocked(true)}
+  onSpeakerError={(error) => console.error(error)}
+/>
+```
+
+Speaker audio uses its own audio element; screen video stays muted and continues
+playing if sound is blocked or capture fails. A browser autoplay refusal retries
+on the next click or key press. `onSpeakerError` reports Android capture failures;
+toggle mute to retry capture. Muting changes only this viewer's audio and never
+reconnects the stream. Watch-only viewers can listen without sharing a microphone.
+Speaker output is independent of camera and microphone injection support.
+
+Core users attach an `HTMLAudioElement` with `stream.attachAudio(audio)` and keep
+its `muted` property in sync with `stream.updateOptions({ speakerMuted })`.
+
+Roll out the Android server's `speakerAudio` support to every Android image
+before deploying this UI version. Android support assumes that backend rollout;
+it does not use a capability handshake.
+
 ## Simulated cameras
 
 `RemoteControl` responds automatically when an app in the instance opens,
