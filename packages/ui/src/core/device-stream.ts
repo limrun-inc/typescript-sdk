@@ -69,6 +69,8 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   const watchOnly = options.watchOnly ?? false;
   const sessionId = options.sessionId ?? requestId();
   const platform = options.platform ?? detectPlatform(url ?? '');
+  // An iOS simulator and a macOS guest send their speaker; Android sends none.
+  const hasSpeaker = platform === 'ios' || platform === 'macos';
   let state: DeviceStreamState = {
     connection: 'idle',
     videoReady: false,
@@ -134,10 +136,10 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   // Retries belong to one lifecycle; explicit start/stop invalidates its outstanding probes.
   let lifecycleGeneration = 0;
   let currentWs: WebSocket | null = null;
-  // The socket whose offer has an answer; limulator ignores speaker state for sessions it has not set up.
+  // The socket whose offer has an answer; the device ignores speaker state for sessions it has not set up.
   let speakerSocket: WebSocket | null = null;
   const sendSpeakerState = () => {
-    if (platform !== 'ios' || !speakerSocket || speakerSocket !== currentWs) return;
+    if (!hasSpeaker || !speakerSocket || speakerSocket !== currentWs) return;
     if (speakerSocket.readyState !== WebSocket.OPEN) return;
     speakerSocket.send(
       JSON.stringify({ type: 'speakerAudio', sessionId, enabled: !(options.speakerMuted ?? true) }),
@@ -1243,7 +1245,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       refreshPlaybackStats();
       // Carries the simulator's speaker output, which flows only while `speakerMuted` is false.
       peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-      const wantsSpeakerAudio = platform === 'ios';
+      const wantsSpeakerAudio = hasSpeaker;
       const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
       const duoTransceiver = isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
 
@@ -1648,7 +1650,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
               return;
             }
             updateStatus('Set remote description');
-            // limulator registers the session before it answers, so it can take the speaker state now.
+            // The device registers the session before it answers, so it can take the speaker state now.
             speakerSocket = ws;
             if (!(options.speakerMuted ?? true)) sendSpeakerState();
             break;

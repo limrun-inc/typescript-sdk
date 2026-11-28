@@ -781,6 +781,7 @@ describe('headless device stream', () => {
   });
   it.each([
     ['iOS', { url: 'wss://host/ios_test', token: 'secret' }, true],
+    ['macOS', { url: 'wss://host/macos_test', token: 'secret' }, true],
     ['Android', { url: 'wss://host/android_test', token: 'secret' }, false],
   ] as const)('offers to receive speaker audio on %s: %s', async (_, options, expected) => {
     const { socket, peer } = await handshake(create(options));
@@ -816,6 +817,18 @@ describe('headless device stream', () => {
     client.updateOptions({ speakerMuted: true });
     client.updateOptions({ speakerMuted: true });
     expect(speakerMessages().map((m) => m.enabled)).toEqual([true, false]);
+  });
+  it('tells a macOS guest whether the viewer listens', async () => {
+    const client = create({ url: 'wss://host/macos_test', token: 'secret', speakerMuted: false });
+    const { socket } = await handshake(client);
+    const offer = socket.sent.find((m) => m.type === 'offer')!;
+    socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    client.updateOptions({ speakerMuted: true });
+    expect(socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([
+      { type: 'speakerAudio', sessionId: offer.sessionId, enabled: true },
+      { type: 'speakerAudio', sessionId: offer.sessionId, enabled: false },
+    ]);
   });
   it('keeps a muted viewer quiet and leaves Android alone', async () => {
     const ios = create({ url: 'wss://host/ios_test', token: 'secret' });
