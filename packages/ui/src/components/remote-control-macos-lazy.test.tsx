@@ -6,6 +6,7 @@ import { RemoteControl } from './remote-control';
 vi.mock('../core/device-stream', () => ({
   createDeviceStream: vi.fn(() => ({
     attachVideo: vi.fn(),
+    attachAudio: vi.fn(),
     start: vi.fn(),
     dispose: vi.fn(),
     updateOptions: vi.fn(),
