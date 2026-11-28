@@ -63,6 +63,9 @@ class Stream {
   getAudioTracks() {
     return this.tracks.filter((t) => t.kind === 'audio');
   }
+  addTrack(track: MediaStreamTrack) {
+    this.tracks.push(track);
+  }
 }
 class Peer extends EventTarget {
   static peers: Peer[] = [];
@@ -776,6 +779,132 @@ describe('headless device stream', () => {
     expect(client.getState().connection).toBe('idle');
     expect(vi.getTimerCount()).toBe(0);
   });
+  it.each([
+    ['iOS', { url: 'wss://host/ios_test', token: 'secret' }, true],
+    ['Android', { url: 'wss://host/android_test', token: 'secret' }, false],
+  ] as const)('offers to receive speaker audio on %s: %s', async (_, options, expected) => {
+    const { socket, peer } = await handshake(create(options));
+    expect(peer.createOffer).toHaveBeenCalledWith(expect.objectContaining({ offerToReceiveAudio: expected }));
+    const offer = socket.sent.find((m) => m.type === 'offer')!;
+    expect('speakerAudio' in offer).toBe(expected);
+    if (expected) expect(offer.speakerAudio).toBe(true);
+  });
+  const speakerTrackEvent = (peer: Peer) => {
+    const track = { kind: 'audio', id: 'speaker0' } as MediaStreamTrack;
+    peer.ontrack?.({
+      track,
+      streams: [new Stream([track])],
+      receiver: peer.transceivers[0].receiver,
+    } as unknown as RTCTrackEvent);
+    return track;
+  };
+  const audioElement = (play: (audio: HTMLAudioElement) => Promise<void> = async () => {}) => {
+    const audio = document.createElement('audio');
+    audio.muted = true;
+    audio.play = vi.fn(() => play(audio));
+    return audio;
+  };
+  it('tells limulator whether the viewer listens, once it answered and on every change', async () => {
+    const client = create({ url: 'wss://host/ios_test', token: 'secret', speakerMuted: false });
+    const { socket } = await handshake(client);
+    const speakerMessages = () => socket.sent.filter((m) => m.type === 'speakerAudio');
+    const offer = socket.sent.find((m) => m.type === 'offer')!;
+    expect(speakerMessages()).toEqual([]);
+    socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    expect(speakerMessages()).toEqual([{ type: 'speakerAudio', sessionId: offer.sessionId, enabled: true }]);
+    client.updateOptions({ speakerMuted: true });
+    client.updateOptions({ speakerMuted: true });
+    expect(speakerMessages().map((m) => m.enabled)).toEqual([true, false]);
+  });
+  it('keeps a muted viewer quiet and leaves Android alone', async () => {
+    const ios = create({ url: 'wss://host/ios_test', token: 'secret' });
+    const first = await handshake(ios);
+    first.socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    expect(first.socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
+    const android = create({ url: 'wss://host/android_test', token: 'secret' });
+    const second = await handshake(android);
+    second.socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    android.updateOptions({ speakerMuted: false });
+    expect(second.socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
+  });
+  it('plays speaker audio through audio elements, apart from the screen', async () => {
+    const client = create({ url: 'wss://host/ios_test', token: 'secret' });
+    const { peer } = await handshake(client);
+    peer.connected();
+    const early = audioElement();
+    client.attachAudio(early);
+    const video = document.createElement('video');
+    client.attachVideo(video);
+    const screen = peer.track();
+    const speaker = speakerTrackEvent(peer);
+    const late = audioElement();
+    client.attachAudio(late);
+    for (const audio of [early, late]) {
+      expect((audio.srcObject as unknown as Stream).getTracks()).toEqual([speaker]);
+      expect(audio.play).toHaveBeenCalledOnce();
+    }
+    expect((video.srcObject as unknown as Stream).getTracks()).toEqual(screen.getTracks());
+  });
+  it('ignores audio tracks on platforms without speaker audio', async () => {
+    const client = create({ url: 'wss://host/android_test', token: 'secret' });
+    const { peer } = await handshake(client);
+    const audio = audioElement();
+    client.attachAudio(audio);
+    speakerTrackEvent(peer);
+    expect(audio.srcObject).toBeFalsy();
+    expect(audio.play).not.toHaveBeenCalled();
+  });
+  it('keeps refused speaker audio playing muted and reports it', async () => {
+    const onSpeakerBlocked = vi.fn();
+    const client = create({
+      url: 'wss://host/ios_test',
+      token: 'secret',
+      onSpeakerBlocked,
+    });
+    const { peer } = await handshake(client);
+    const audio = audioElement((element) =>
+      element.muted ?
+        Promise.resolve()
+      : Promise.reject(Object.assign(new Error('needs a gesture'), { name: 'NotAllowedError' })),
+    );
+    audio.muted = false;
+    client.attachAudio(audio);
+    speakerTrackEvent(peer);
+    await flush();
+    expect(audio.muted).toBe(true);
+    expect(audio.play).toHaveBeenCalledTimes(2);
+    expect(onSpeakerBlocked).toHaveBeenCalledOnce();
+
+    // A replacement track before the gesture plays muted and keeps waiting for it.
+    speakerTrackEvent(peer);
+    await flush();
+    expect(audio.muted).toBe(true);
+    expect(audio.play).toHaveBeenCalledTimes(3);
+
+    // A key press grants the gesture the browser wanted and plays the sound.
+    vi.mocked(audio.play).mockResolvedValue(undefined);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    await flush();
+    expect(audio.muted).toBe(false);
+    expect(audio.play).toHaveBeenCalledTimes(4);
+
+    // A detached element stops waiting for one.
+    vi.mocked(audio.play).mockImplementation((() => {
+      return audio.muted ?
+          Promise.resolve()
+        : Promise.reject(Object.assign(new Error('needs a gesture'), { name: 'NotAllowedError' }));
+    }) as () => Promise<void>);
+    speakerTrackEvent(peer);
+    await flush();
+    expect(audio.muted).toBe(true);
+    client.dispose();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    await flush();
+    expect(audio.muted).toBe(true);
+  });
   it('attaches a late Duo renderer to the retained inner track', async () => {
     const client = create();
     const { peer, socket } = await handshake(client, { foldSupported: true });
@@ -1013,6 +1142,84 @@ describe('RemoteControl compatibility', () => {
     const fourth = await connect();
     handle.current!.sendKeyEvent({ type: 'keydown', code: 'Enter' });
     expect(fourth.peer.channel.send).toHaveBeenCalledOnce();
+  });
+
+  it('plays speaker audio muted until asked, reports refusals and never reconnects for it', async () => {
+    const onSpeakerBlocked = vi.fn();
+    const refuseSound = function (this: HTMLMediaElement) {
+      return this.muted ?
+          Promise.resolve()
+        : Promise.reject(Object.assign(new Error('needs a gesture'), { name: 'NotAllowedError' }));
+    };
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(refuseSound);
+    await render({ onSpeakerBlocked });
+    const first = await connect();
+    await act(async () => {
+      first.socket.message({ type: 'answer', sdp: 'v=0' });
+      await flush();
+    });
+    expect(first.socket.sent.find((m) => m.type === 'offer')).toMatchObject({ speakerAudio: true });
+    const video = host.querySelector('video')!;
+    const audio = host.querySelector('audio')!;
+    const track = { kind: 'audio', id: 'speaker0' } as MediaStreamTrack;
+    await act(async () => {
+      first.peer.ontrack?.({
+        track,
+        streams: [new Stream([track])],
+        receiver: first.peer.transceivers[0].receiver,
+      } as unknown as RTCTrackEvent);
+      await flush();
+    });
+    expect((audio.srcObject as unknown as Stream).getTracks()).toEqual([track]);
+    expect(audio.muted).toBe(true);
+
+    // An unmute the browser accepts plays sound; the screen stays muted.
+    play.mockResolvedValue(undefined);
+    await render({ speakerMuted: false, onSpeakerBlocked });
+    expect(audio.muted).toBe(false);
+    expect(video.muted).toBe(true);
+    expect(first.peer.close).not.toHaveBeenCalled();
+
+    // One it refuses, such as a reconnect long after the click, goes muted.
+    play.mockImplementation(refuseSound);
+    await render({ speakerMuted: true, onSpeakerBlocked });
+    await render({ speakerMuted: false, onSpeakerBlocked });
+    await act(flush);
+    expect(audio.muted).toBe(true);
+    expect(onSpeakerBlocked).toHaveBeenCalledOnce();
+
+    // The caller left it unmuted, so the next click anywhere brings the sound back.
+    play.mockResolvedValue(undefined);
+    await act(async () => {
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flush();
+    });
+    expect(audio.muted).toBe(false);
+
+    // A caller that mutes after a refusal keeps it muted through later clicks.
+    play.mockImplementation(refuseSound);
+    await render({ speakerMuted: true, onSpeakerBlocked });
+    await render({ speakerMuted: false, onSpeakerBlocked });
+    await act(flush);
+    await render({ speakerMuted: true, onSpeakerBlocked });
+    play.mockResolvedValue(undefined);
+    await act(async () => {
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flush();
+    });
+    expect(audio.muted).toBe(true);
+    expect(onSpeakerBlocked).toHaveBeenCalledTimes(2);
+
+    // Every mute change reaches limulator over the same connection.
+    expect(first.socket.sent.filter((m) => m.type === 'speakerAudio').map((m) => m.enabled)).toEqual([
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+    ]);
+    expect(first.peer.close).not.toHaveBeenCalled();
   });
 
   it('applies watchOnly through RemoteControl and reconnects when it changes', async () => {

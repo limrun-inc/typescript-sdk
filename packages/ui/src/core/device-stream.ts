@@ -21,7 +21,15 @@ import {
   parseCameraRequest,
   type CameraRequest,
 } from './camera';
-import { debugLog, debugWarn, safeInvoke, detectPlatform, withAuthenticationToken } from './stream-utils';
+import {
+  debugLog,
+  debugWarn,
+  safeInvoke,
+  detectPlatform,
+  cancelSpeakerRetry,
+  playSpeaker,
+  withAuthenticationToken,
+} from './stream-utils';
 import type {
   CameraStreamStats,
   ScreenshotData,
@@ -101,8 +109,18 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     entry.stop?.();
     entry.stop = attachVideoStream(video, stream, (error) => debugWarn('Video playback fallback:', error));
   };
+  // Speaker audio plays from its own elements, so the screen's video elements
+  // stay muted and never need a user gesture to start.
+  const audios = new Set<HTMLAudioElement>();
+  let speakerStream: MediaStream | null = null;
+  const playSpeakerStream = (audio: HTMLAudioElement) => {
+    audio.srcObject = speakerStream;
+    if (speakerStream) playSpeaker(audio, () => safeInvoke('onSpeakerBlocked', options.onSpeakerBlocked));
+  };
   const clearPlayback = () => {
     streams.clear();
+    speakerStream = null;
+    for (const audio of audios) audio.srcObject = null;
     for (const [video, entry] of videos) {
       entry.clear?.();
       entry.stop?.();
@@ -116,6 +134,15 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   // Retries belong to one lifecycle; explicit start/stop invalidates its outstanding probes.
   let lifecycleGeneration = 0;
   let currentWs: WebSocket | null = null;
+  // The socket whose offer has an answer; limulator ignores speaker state for sessions it has not set up.
+  let speakerSocket: WebSocket | null = null;
+  const sendSpeakerState = () => {
+    if (platform !== 'ios' || !speakerSocket || speakerSocket !== currentWs) return;
+    if (speakerSocket.readyState !== WebSocket.OPEN) return;
+    speakerSocket.send(
+      JSON.stringify({ type: 'speakerAudio', sessionId, enabled: !(options.speakerMuted ?? true) }),
+    );
+  };
   let currentPeerConnection: RTCPeerConnection | null = null;
   let currentDataChannel: RTCDataChannel | null = null;
   let currentLatencyTrace: ReturnType<typeof createLatencyTrace> | null = null;
@@ -864,6 +891,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       });
     }
     currentOutboundMicSender = null;
+    speakerSocket = null;
     if (currentWs) {
       currentWs.onopen = null;
       currentWs.onmessage = null;
@@ -1213,7 +1241,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       const playback = { peer: peerConnection, displays: new Map<RTCRtpReceiver, 'primary' | 'inner'>() };
       playbackConnection = playback;
       refreshPlaybackStats();
+      // Carries the simulator's speaker output, which flows only while `speakerMuted` is false.
       peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+      const wantsSpeakerAudio = platform === 'ios';
       const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
       const duoTransceiver = isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
 
@@ -1526,6 +1556,10 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
             if (entry.display === display) playVideo(element, entry, stream);
           }
         }
+        if (event.track.kind === 'audio' && wantsSpeakerAudio) {
+          speakerStream = new MediaStream([event.track]);
+          for (const audio of audios) playSpeakerStream(audio);
+        }
       };
 
       // Handle ICE candidates
@@ -1614,6 +1648,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
               return;
             }
             updateStatus('Set remote description');
+            // limulator registers the session before it answers, so it can take the speaker state now.
+            speakerSocket = ws;
+            if (!(options.speakerMuted ?? true)) sendSpeakerState();
             break;
           case 'candidate':
             if (!currentPeerConnection || currentPeerConnection !== peerConnection) {
@@ -1784,7 +1821,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       if (currentPeerConnection === peerConnection) {
         const offer = await peerConnection.createOffer({
           offerToReceiveVideo: true,
-          offerToReceiveAudio: false,
+          // This legacy option overrides transceiver directions: false turns
+          // the speaker's receive-only audio section inactive.
+          offerToReceiveAudio: wantsSpeakerAudio,
         });
         if (!isCurrentAttempt() || currentPeerConnection !== peerConnection) {
           return;
@@ -1799,6 +1838,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
             JSON.stringify({
               type: 'offer',
               ...(isDuo ? { displayStreams: true } : {}),
+              ...(wantsSpeakerAudio ? { speakerAudio: true } : {}),
               ...(latencyTrace ? { latencyTraceVersion: 1 } : {}),
               sdp: offer.sdp,
               sessionId: sessionId,
@@ -1848,6 +1888,24 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     updateStatus('Stopped');
   };
 
+  /** Plays the speaker audio that `speakerMuted: false` asks for. The caller owns muting the element. */
+  const attachAudio = (audio: HTMLAudioElement) => {
+    if (disposed) throw new Error('Device stream is disposed');
+    if (audios.has(audio)) throw new Error('Audio element is already attached');
+    audios.add(audio);
+    if (speakerStream) playSpeakerStream(audio);
+    let detached = false;
+    const detach = () => {
+      if (detached) return;
+      detached = true;
+      attachments.delete(detach);
+      audios.delete(audio);
+      cancelSpeakerRetry(audio);
+      audio.srcObject = null;
+    };
+    attachments.add(detach);
+    return detach;
+  };
   const attachVideo = (video: HTMLVideoElement, display: StreamDisplay = 'primary') => {
     if (disposed) throw new Error('Device stream is disposed');
     if (videos.has(video)) throw new Error('Video element is already attached');
@@ -1925,6 +1983,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     start,
     stop,
     attachVideo,
+    attachAudio,
     attachFrameSink,
     dispose: () => {
       if (disposed) return;
@@ -1955,6 +2014,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         if (isMicrophoneWanted()) void attachMicrophone();
         else void detachMicrophone();
       }
+      if ((previous.speakerMuted ?? true) !== (options.speakerMuted ?? true)) sendSpeakerState();
       if (!!previous.inspectMode !== !!options.inspectMode) {
         if (options.inspectMode) currentAxFetcher?.start();
         else {

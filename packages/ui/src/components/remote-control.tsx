@@ -1,5 +1,13 @@
 import { createDeviceStream, type DeviceStream } from '../core/device-stream';
-import { detectPlatform, debugLog, debugWarn, safeInvoke, type DevicePlatform } from '../core/stream-utils';
+import {
+  detectPlatform,
+  debugLog,
+  debugWarn,
+  cancelSpeakerRetry,
+  playSpeaker,
+  safeInvoke,
+  type DevicePlatform,
+} from '../core/stream-utils';
 import { MACBOOK, MACBOOK_EXTRA_HEIGHT, MACBOOK_SCREEN_RAISE, MACBOOK_WIDTH } from './macbook-geometry';
 import type {
   ScreenshotData,
@@ -13,6 +21,7 @@ export { withAuthenticationToken } from '../core/stream-utils';
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useMemo,
   useState,
@@ -307,6 +316,23 @@ export interface RemoteControlProps {
    * track mid-stream, and when capture stops.
    */
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
+
+  /**
+   * iOS only: plays the simulator's speaker output in sync with the screen
+   * when false. Defaults to true, and the simulator sends no sound while every
+   * viewer is muted. Unmute from a click handler or after other user
+   * interaction, because browsers refuse sound before it. Changing it never
+   * reconnects the stream.
+   */
+  speakerMuted?: boolean;
+
+  /**
+   * Fires when the browser refuses to play the sound, for example when the
+   * audio arrives or reconnects long after the click that unmuted it. The
+   * sound stays off until the next click or key press on the page, unless the
+   * caller sets `speakerMuted` first.
+   */
+  onSpeakerBlocked?: () => void;
 }
 
 export interface RemoteControlHandle {
@@ -547,6 +573,8 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onTrace,
       microphoneEnabled = false,
       onMicrophoneStateChange,
+      speakerMuted = true,
+      onSpeakerBlocked,
     }: RemoteControlProps,
     ref,
   ) => {
@@ -561,6 +589,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     // changing the frame must not restart a live stream.
     const streamDeviceModel = deviceModel === 'iphone-duo' ? deviceModel : undefined;
     const innerVideoRef = useRef<HTMLVideoElement>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
     const [duoState, setDuoState] = useState<DuoState | null>(null);
     const [duoError, setDuoError] = useState<string>();
     const [videoLoaded, setVideoLoaded] = useState(false);
@@ -1877,6 +1906,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       clientRef.current?.reconnect();
     };
     const callbacksRef = useRef({
+      onSpeakerBlocked,
       onAxSnapshotChange,
       onAxStatusChange,
       onCameraDemandChange,
@@ -1888,6 +1918,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onPlaybackStats,
     });
     callbacksRef.current = {
+      onSpeakerBlocked,
       onAxSnapshotChange,
       onAxStatusChange,
       onCameraDemandChange,
@@ -1928,6 +1959,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         axMaxBackoffMs,
         androidElementTreeOptions,
         microphoneEnabled,
+        speakerMuted,
         onStateChange: (state) => {
           // Preserve the loaded layout behind errors; the placeholder returns when a new attempt starts.
           if (
@@ -1952,6 +1984,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         onCameraDemandChange: (...args) => callbacksRef.current.onCameraDemandChange?.(...args),
         onCameraStats: onCameraStats ? (...args) => callbacksRef.current.onCameraStats?.(...args) : undefined,
         onMicrophoneStateChange: (...args) => callbacksRef.current.onMicrophoneStateChange?.(...args),
+        onSpeakerBlocked: () => callbacksRef.current.onSpeakerBlocked?.(),
         onTrace: latencyTraceRequested ? (...args) => callbacksRef.current.onTrace?.(...args) : undefined,
         onTerminated: () => callbacksRef.current.onTerminated?.(),
         onConnectionStateChange: (...args) => callbacksRef.current.onConnectionStateChange?.(...args),
@@ -1960,17 +1993,32 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       });
       clientRef.current = client;
       const detach = videoRef.current ? client.attachVideo(videoRef.current) : undefined;
+      const detachAudio = audioRef.current ? client.attachAudio(audioRef.current) : undefined;
       client.start();
       return () => {
         active = false;
         client.dispose();
         detach?.();
+        detachAudio?.();
         clientRef.current = null;
       };
       // Token rotation must not restart a healthy stream: the server checks
       // the token only when a connection starts, so updateOptions carries it.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly]);
+
+    // A layout effect runs while the click that unmuted is still in progress,
+    // so the browser treats the resumed sound as user-initiated.
+    useLayoutEffect(() => {
+      clientRef.current?.updateOptions({ speakerMuted });
+      const audio = audioRef.current;
+      if (!audio) return;
+      cancelSpeakerRetry(audio);
+      audio.muted = speakerMuted;
+      if (!speakerMuted && audio.srcObject) {
+        playSpeaker(audio, () => safeInvoke('onSpeakerBlocked', callbacksRef.current.onSpeakerBlocked));
+      }
+    }, [speakerMuted]);
 
     useEffect(() => {
       if (isDuo && innerVideoRef.current)
@@ -2530,6 +2578,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
           </Suspense>
         )}
         {macbookVisible && <DeviceModeToggle view={macbookView} label="MacBook rendering" />}
+        <audio ref={audioRef} muted hidden />
         {isDuo && (
           <video
             ref={innerVideoRef}

@@ -10,6 +10,7 @@ const { createDeviceStream, sendControl } = vi.hoisted(() => {
     sendControl,
     createDeviceStream: vi.fn(() => ({
       attachVideo: vi.fn(),
+      attachAudio: vi.fn(),
       start: vi.fn(),
       dispose: vi.fn(),
       updateOptions: vi.fn(),
