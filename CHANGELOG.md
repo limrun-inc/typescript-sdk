@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.79.5](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.4...v0.79.5) (2026-11-28)
+
+
+### Features
+
+* **xcode:** hot reload Swift edits into the running simulator app ([#769](https://github.com/limrun-inc/typescript-sdk/issues/769)) ([6b73686](https://github.com/limrun-inc/typescript-sdk/commit/6b73686fde060c193d8766223d97a1e77704b397))
+
+
+### Chores
+
+* **cli:** release 0.65.3 with SDK 0.79.4 ([#767](https://github.com/limrun-inc/typescript-sdk/issues/767)) ([625c2fa](https://github.com/limrun-inc/typescript-sdk/commit/625c2fa5b709c10ccaeaf6892bddfdade181caec))
+
 ## [0.79.4](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.3...v0.79.4) (2026-11-27)
 
 
