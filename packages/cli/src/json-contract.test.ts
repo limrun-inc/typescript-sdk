@@ -751,7 +751,7 @@ test.each(['ios', 'android'])(
         quality: 8,
         persist: true,
         'persist-ttl': '24h',
-        ...(platform === 'ios' ? { display: 'outer', 'touch-indicators': false } : {}),
+        ...(platform === 'ios' ? { display: 'outer', 'touch-indicators': false, audio: false } : {}),
       },
     ).run();
     expect(JSON.parse(stdout)).toEqual({
@@ -762,7 +762,7 @@ test.each(['ios', 'android'])(
       quality: 8,
       persist: true,
       persistTtlSeconds: 86400,
-      ...(platform === 'ios' ? { display: 'outer', touchIndicators: false } : {}),
+      ...(platform === 'ios' ? { display: 'outer', touchIndicators: false, audio: false } : {}),
     });
   },
 );

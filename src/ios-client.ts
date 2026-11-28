@@ -59,6 +59,11 @@ function buildDownloadUrl(apiUrl: string, recordingId?: string): string {
   return `${apiUrl}/files?name=${encodeURIComponent(filename)}`;
 }
 
+/** The speaker recording's WAV file under the instance's /files. */
+export function speakerRecordingDownloadUrl(apiUrl: string, recordingId: string): string {
+  return `${apiUrl}/files?name=${encodeURIComponent(`speaker_${recordingId}.wav`)}`;
+}
+
 function validateRecordingId(recordingId: string): void {
   if (/^[a-z0-9][a-z0-9_-]{0,63}$/.exec(recordingId)?.[0] !== recordingId) {
     throw new Error(
@@ -72,7 +77,11 @@ export type RecordingOptions = {
   persist?: PersistOption;
   display?: DuoDisplay;
   touchIndicators?: boolean;
+  /** Record the simulator's speaker beside the screen. Defaults to true. */
+  audio?: boolean;
 };
+
+export type SpeakerRecordingDestination = { localPath?: string };
 
 export type RecordingDestination = { presignedUrl?: string; localPath?: string };
 
@@ -1207,7 +1216,8 @@ export type InstanceClient = {
    * canvas without stretching. Pass display to keep recording one panel.
    * When provided, `quality` must be one of `5`, `6`, `7`, `8`, `9`, or `10`.
    * The server default is `5`. Touch ripples and drag trails are enabled while
-   * recording by default. Set `touchIndicators: false` to omit them.
+   * recording by default. Set `touchIndicators: false` to omit them. The
+   * simulator's speaker is recorded as an audio track unless `audio` is false.
    * With `persist`, the completed recording is uploaded to Limrun's bucket
    * when the recording stops or the instance terminates; list it with
    * `iosInstances.listRecordings`.
@@ -1224,6 +1234,21 @@ export type InstanceClient = {
 
   /** Stop the given recording, or the latest active recording when omitted. Returns its authenticated download URL. */
   stopRecordingSession: (recordingId?: string, saveTo?: RecordingDestination) => Promise<string>;
+
+  /**
+   * Start recording the simulator's speaker alone, into a 48 kHz mono 16-bit
+   * WAV file, and return its ID. Up to eight speaker recordings may run at
+   * once. Omit recordingId to generate one. IDs cannot be reused during the
+   * instance lifetime.
+   */
+  startSpeakerRecording: (options?: { recordingId?: string }) => Promise<string>;
+
+  /**
+   * Stop the given speaker recording, or the latest one when omitted, and
+   * return its authenticated download URL, valid while the instance runs.
+   * With `saveTo.localPath`, the client also downloads the WAV file there.
+   */
+  stopSpeakerRecording: (recordingId?: string, saveTo?: SpeakerRecordingDestination) => Promise<string>;
 
   /**
    * Stop the active server-side recording.
@@ -2403,6 +2428,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       startVideoRecordingResult: () => undefined,
       startVideoRecordingSessionResult: (msg) => ({ recordingId: msg.recordingId }),
       stopVideoRecordingSessionResult: (msg) => ({ recordingId: msg.recordingId }),
+      startSpeakerRecordingResult: (msg) => ({ recordingId: msg.recordingId }),
+      stopSpeakerRecordingResult: (msg) => ({ recordingId: msg.recordingId }),
       stopVideoRecordingResult: () => undefined,
       startAppLogCaptureResult: () => undefined,
       stopAppLogCaptureResult: () => undefined,
@@ -2941,6 +2968,7 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
         quality: opts?.quality,
         display: opts?.display,
         touchIndicators: opts?.touchIndicators,
+        audio: opts?.audio,
       };
     };
 
@@ -2974,6 +3002,28 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       const legacy = recordingId === undefined && stoppedId === 'legacy:recording';
       if (!legacy) validateRecordingId(stoppedId);
       const downloadUrl = buildDownloadUrl(options.apiUrl, legacy ? undefined : stoppedId);
+      if (saveTo.localPath) {
+        await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
+      }
+      return downloadUrl;
+    };
+
+    const startSpeakerRecording: InstanceClient['startSpeakerRecording'] = async (opts) => {
+      if (opts?.recordingId !== undefined) validateRecordingId(opts.recordingId);
+      const result = await sendRequest<{ recordingId: string }>('startSpeakerRecording', {
+        recordingId: opts?.recordingId,
+      });
+      validateRecordingId(result.recordingId);
+      return result.recordingId;
+    };
+
+    const stopSpeakerRecording: InstanceClient['stopSpeakerRecording'] = async (recordingId, saveTo = {}) => {
+      if (recordingId !== undefined) validateRecordingId(recordingId);
+      const result = await sendRequest<{ recordingId?: string }>('stopSpeakerRecording', { recordingId });
+      const stoppedId = result.recordingId ?? recordingId;
+      if (stoppedId === undefined) throw new Error('Runtime did not return the stopped recordingId');
+      validateRecordingId(stoppedId);
+      const downloadUrl = speakerRecordingDownloadUrl(options.apiUrl, stoppedId);
       if (saveTo.localPath) {
         await downloadFileToLocalPath(downloadUrl, options.token, saveTo.localPath);
       }
@@ -3715,6 +3765,8 @@ export async function createInstanceClient(options: InstanceClientOptions): Prom
       stopRecording,
       startRecordingSession,
       stopRecordingSession,
+      startSpeakerRecording,
+      stopSpeakerRecording,
       startAppLogCapture,
       stopAppLogCapture,
       startEventCapture,

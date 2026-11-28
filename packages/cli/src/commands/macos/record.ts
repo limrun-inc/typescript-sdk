@@ -7,7 +7,8 @@ export default class MacosRecord extends BaseCommand {
   static summary = 'Start or stop a screen recording on a macOS instance';
   static description =
     'Record the screen of a running macOS instance. Start returns a recording ID; stop takes one, or stops ' +
-    'the most recently started recording that is still active. Up to eight recordings can run at once. Stop ' +
+    'the most recently started recording that is still active. Up to eight recordings can run at once. ' +
+    "Recordings include the guest's speaker as an audio track; use --no-audio to leave it out. Stop " +
     'downloads the MP4 to a local file, and with `--presigned-url` the instance also uploads it there.';
   static examples = [
     '<%= config.bin %> macos record start',
@@ -15,6 +16,7 @@ export default class MacosRecord extends BaseCommand {
     '<%= config.bin %> macos record start run-1 --quality 8',
     '<%= config.bin %> macos record stop run-1 --presigned-url https://example.com/upload',
     '<%= config.bin %> macos record start --persist --persist-ttl 24h',
+    '<%= config.bin %> macos record start --no-audio',
   ];
 
   static args = {
@@ -32,6 +34,12 @@ export default class MacosRecord extends BaseCommand {
   static flags = {
     ...BaseCommand.baseFlags,
     id: Flags.string({ description: 'macOS instance ID. Defaults to the last created macOS instance.' }),
+    audio: Flags.boolean({
+      description:
+        "Record the instance's speaker as the video's audio track. Enabled by default. Applies to start.",
+      default: true,
+      allowNo: true,
+    }),
     quality: Flags.integer({
       description:
         'Recording quality from 5 to 10. Higher values increase quality and file size. Applies to start.',
@@ -74,6 +82,7 @@ export default class MacosRecord extends BaseCommand {
         const recordingId = await client.startRecording({
           ...(args.recordingId !== undefined && { recordingId: args.recordingId }),
           quality: flags.quality,
+          audio: flags.audio,
           ...(persist !== undefined && { persist }),
         });
         this.outputResult(
@@ -84,6 +93,7 @@ export default class MacosRecord extends BaseCommand {
             recordingId,
             quality: flags.quality,
             persist: Boolean(persist),
+            audio: flags.audio,
           },
           persist ?
             `Recording ${recordingId} started; it will be persisted for ${

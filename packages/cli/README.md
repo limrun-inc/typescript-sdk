@@ -475,14 +475,24 @@ lim ios perf-captures
 On iOS, recordings include touch ripples and drag trails by default. Use
 `lim ios record start --no-touch-indicators` to omit them. Indicators also
 appear in live views and screenshots while recording, and turn off when
-recording stops or fails.
+recording stops or fails. Recordings include the simulator's speaker as an
+audio track; use `--no-audio` to leave it out.
 
 ```bash
 lim ios record start
 lim ios record start --quality 8
+lim ios record start --no-audio
 lim ios record stop
 lim ios record stop -o recording.mp4
 lim ios record stop --presigned-url https://example.com/upload
+```
+
+To record only the speaker, as a 48 kHz mono WAV file, use `lim ios speaker`.
+It records whether or not anyone is listening to the stream:
+
+```bash
+lim ios speaker start
+lim ios speaker stop -o speaker.wav
 ```
 
 #### Built App Sync (iOS only)
@@ -874,12 +884,14 @@ lim macos tunnel --selector api.corp.example --har ./capture.har
 lim macos ca add ./proxy-ca.pem
 ```
 
-Record the screen, read an app's log, and see the running apps' CPU and memory. An app's log has its messages in
+Record the screen, with the guest's speaker as its audio track unless you pass `--no-audio`, or the speaker
+alone as a WAV file. Read an app's log, and see the running apps' CPU and memory. An app's log has its messages in
 the unified log, and its stdout and stderr when `lim macos launch-app` started it; macOS sends the output of an app
 started any other way nowhere:
 
 ```bash
 lim macos record start                   # lim macos record stop -o recording.mp4
+lim macos speaker start                  # lim macos speaker stop -o speaker.wav
 lim macos launch-app com.example.app --env API_URL=https://example.com
 lim macos app-log com.example.app --follow
 lim macos perf --since 2m
