@@ -55,9 +55,15 @@ describe('iOS recording sessions', () => {
             ...(commandError ?
               { error: commandError }
             : {
-                ...(message.type === 'startVideoRecordingSession' ?
+                ...((
+                  message.type === 'startVideoRecordingSession' || message.type === 'startSpeakerRecording'
+                ) ?
                   { recordingId: returnedId ?? message.recordingId ?? randomUUID() }
-                : message.type === 'stopVideoRecordingSession' && returnedId ? { recordingId: returnedId }
+                : (
+                  (message.type === 'stopVideoRecordingSession' || message.type === 'stopSpeakerRecording') &&
+                  returnedId
+                ) ?
+                  { recordingId: returnedId }
                 : {}),
               }),
           }),
@@ -117,6 +123,36 @@ describe('iOS recording sessions', () => {
         recordingId: full,
         upload: { presignedUrl: 'https://storage.example.test/full.mp4' },
       });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test('asks for a recording without the speaker only when told to', async () => {
+    await client.startRecordingSession({ recordingId: 'with-sound' });
+    await client.startRecordingSession({ recordingId: 'silent', audio: false });
+    expect(requests[0]).not.toHaveProperty('audio');
+    expect(requests[1]).toMatchObject({ recordingId: 'silent', audio: false });
+  });
+
+  test('records the speaker and downloads the server-selected WAV file', async () => {
+    expect(await client.startSpeakerRecording({ recordingId: 'spk-1' })).toBe('spk-1');
+    expect(requests[0]).toEqual(
+      expect.objectContaining({ type: 'startSpeakerRecording', recordingId: 'spk-1' }),
+    );
+    returnedId = 'spk-1';
+    const directory = await mkdtemp(join(tmpdir(), 'limrun-speaker-test-'));
+    try {
+      const localPath = join(directory, 'speaker.wav');
+      expect(await client.stopSpeakerRecording(undefined, { localPath })).toBe(
+        `${apiUrl}/files?name=speaker_spk-1.wav`,
+      );
+      expect(requests[1]).toEqual(expect.objectContaining({ type: 'stopSpeakerRecording' }));
+      expect(requests[1]).not.toHaveProperty('recordingId');
+      expect(await readFile(localPath)).toEqual(video);
+      expect(downloads).toEqual([
+        { path: '/ios/api/files?name=speaker_spk-1.wav', authorization: 'Bearer instance-token' },
+      ]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

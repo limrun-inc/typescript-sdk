@@ -9,7 +9,7 @@ function setup(args: Record<string, unknown>, flags: Record<string, unknown>) {
   const resolveMacosClient = jest.fn(async () => ({ id: 'macos_test', client }));
   const outputResult = jest.fn();
   const command = Object.assign(Object.create(MacosRecord.prototype), {
-    parse: async () => ({ args, flags: { quality: 5, persist: false, ...flags } }),
+    parse: async () => ({ args, flags: { quality: 5, persist: false, audio: true, ...flags } }),
     setParsedFlags: jest.fn(),
     withAuth: async (run: () => Promise<void>) => run(),
     resolveMacosClient,
@@ -21,9 +21,9 @@ function setup(args: Record<string, unknown>, flags: Record<string, unknown>) {
 test('start begins a recording with the given ID and quality', async () => {
   const { command, client, outputResult } = setup({ action: 'start', recordingId: 'run-1' }, { quality: 8 });
   await command.run();
-  expect(client.startRecording).toHaveBeenCalledWith({ recordingId: 'run-1', quality: 8 });
+  expect(client.startRecording).toHaveBeenCalledWith({ recordingId: 'run-1', quality: 8, audio: true });
   expect(outputResult).toHaveBeenCalledWith(
-    expect.objectContaining({ instanceId: 'macos_test', recordingId: 'rec-1', persist: false }),
+    expect.objectContaining({ instanceId: 'macos_test', recordingId: 'rec-1', persist: false, audio: true }),
     'Recording started: rec-1',
   );
 });
@@ -34,7 +34,13 @@ test.each([
 ])('start with %j persists the recording as %j', async (flags, persist) => {
   const { command, client } = setup({ action: 'start' }, flags);
   await command.run();
-  expect(client.startRecording).toHaveBeenCalledWith({ quality: 5, persist });
+  expect(client.startRecording).toHaveBeenCalledWith({ quality: 5, audio: true, persist });
+});
+
+test('start with --no-audio records the screen without the speaker', async () => {
+  const { command, client } = setup({ action: 'start' }, { audio: false });
+  await command.run();
+  expect(client.startRecording).toHaveBeenCalledWith({ quality: 5, audio: false });
 });
 
 test('stop downloads the MP4 and has the instance upload it', async () => {

@@ -7,7 +7,7 @@ import { getIosInstanceClient } from '../../lib/instance-client-factory';
 export default class IosRecord extends BaseCommand {
   static summary = 'Start or stop video recording on a running iOS instance';
   static description =
-    'Control screen recording on a running iOS instance. Touch ripples and drag trails show where touches occur and are enabled by default while recording. Use --no-touch-indicators to disable them. Start returns a recording ID. Stop accepts an ID or selects the most recently started recording that is still active. Other recordings continue. Stop recording to download the file locally or upload it directly with `--presigned-url`.';
+    'Control screen recording on a running iOS instance. Touch ripples and drag trails show where touches occur and are enabled by default while recording. Use --no-touch-indicators to disable them. Recordings include the simulator speaker as an audio track; use --no-audio to leave it out. Start returns a recording ID. Stop accepts an ID or selects the most recently started recording that is still active. Other recordings continue. Stop recording to download the file locally or upload it directly with `--presigned-url`.';
   static examples = [
     '<%= config.bin %> ios record start',
     '<%= config.bin %> ios record stop',
@@ -17,6 +17,7 @@ export default class IosRecord extends BaseCommand {
     '<%= config.bin %> ios record stop --presigned-url https://example.com/upload --id <instance-ID>',
     '<%= config.bin %> ios record start --quality 8',
     '<%= config.bin %> ios record start --no-touch-indicators',
+    '<%= config.bin %> ios record start --no-audio',
     '<%= config.bin %> ios record start --persist --persist-ttl 24h',
   ];
 
@@ -45,6 +46,12 @@ export default class IosRecord extends BaseCommand {
     'touch-indicators': Flags.boolean({
       description:
         'Show touch ripples and drag trails while recording. Enabled by default. Applies to start.',
+      default: true,
+      allowNo: true,
+    }),
+    audio: Flags.boolean({
+      description:
+        "Record the instance's speaker as the video's audio track. Enabled by default. Applies to start.",
       default: true,
       allowNo: true,
     }),
@@ -104,6 +111,7 @@ export default class IosRecord extends BaseCommand {
           persist,
           display: flags.display as 'inner' | 'outer' | undefined,
           touchIndicators: flags['touch-indicators'],
+          audio: flags.audio,
         };
         const { client, disconnect } = await getIosInstanceClient(this.client, resolvedInstance);
         let recordingId: string;
@@ -123,6 +131,7 @@ export default class IosRecord extends BaseCommand {
             persistTtlSeconds: typeof persist === 'object' ? persist.ttlSeconds : undefined,
             display: flags.display,
             touchIndicators: flags['touch-indicators'],
+            audio: flags.audio,
           },
           persist ?
             `Recording ${recordingId} started; it will be persisted for ${

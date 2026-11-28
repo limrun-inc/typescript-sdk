@@ -114,6 +114,10 @@ describe('macOS client', () => {
         });
       case 'stopVideoRecordingSession':
         return send({ type: 'stopVideoRecordingSessionResult', id, recordingId: 'rec-1' });
+      case 'startSpeakerRecording':
+        return send({ type: 'startSpeakerRecordingResult', id, recordingId: 'spk-1' });
+      case 'stopSpeakerRecording':
+        return send({ type: 'stopSpeakerRecordingResult', id, recordingId: 'spk-1' });
       case 'launchApp':
         return send({ type: 'launchAppResult', id, bundleId: 'com.example.app', pid: 42, launched: true });
       case 'terminateApp':
@@ -266,6 +270,13 @@ describe('macOS client', () => {
       expect(fs.readFileSync(localPath, 'utf8')).toBe('mp4');
       await mac.stopRecording('rec-1', { presignedUrl: 'https://bucket.example/put' });
       await expect(mac.stopRecording('Not Valid')).rejects.toThrow('recordingId must match');
+      await mac.startRecording({ audio: false });
+      expect(await mac.startSpeakerRecording()).toBe('spk-1');
+      const speakerPath = pathModule.join(pathModule.dirname(localPath), 'speaker.wav');
+      expect(await mac.stopSpeakerRecording(undefined, { localPath: speakerPath })).toBe(
+        `${apiUrl}/files?name=speaker_spk-1.wav`,
+      );
+      expect(fs.existsSync(speakerPath)).toBe(true);
 
       expect(
         await mac.launchApp('Example', { mode: 'RelaunchIfRunning', arguments: ['-v'], env: { A: 'b' } }),
@@ -283,6 +294,7 @@ describe('macOS client', () => {
 
       expect(requests.map((r) => [r.method, r.path, r.auth])).toEqual([
         ['GET', '/files?name=recording_rec-1.mp4', 'Bearer control'],
+        ['GET', '/files?name=speaker_spk-1.wav', 'Bearer control'],
         ['POST', '/trusted-cas', 'Bearer control'],
       ]);
       expect(sent()).toEqual([
@@ -293,6 +305,9 @@ describe('macOS client', () => {
           recordingId: 'rec-1',
           upload: { presignedUrl: 'https://bucket.example/put' },
         },
+        { type: 'startVideoRecordingSession', audio: false },
+        { type: 'startSpeakerRecording' },
+        { type: 'stopSpeakerRecording' },
         {
           type: 'launchApp',
           bundleId: 'Example',

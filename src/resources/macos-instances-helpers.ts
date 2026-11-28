@@ -61,6 +61,8 @@ export interface MacosRecordingOptions {
   quality?: number;
   /** Upload the recording to Limrun's bucket when it stops; list it with `listRecordings`. */
   persist?: PersistOption;
+  /** Record the guest's speaker beside the screen. Defaults to true. */
+  audio?: boolean;
 }
 
 /** Where a stopped recording goes, besides the instance's own download URL. */
@@ -234,6 +236,19 @@ export interface MacosClient {
    * download URL, which takes the instance token and lasts while the instance runs.
    */
   stopRecording(recordingId?: string, saveTo?: MacosRecordingDestination): Promise<string>;
+
+  /**
+   * Start recording the guest's speaker alone, into a 48 kHz mono 16-bit WAV file, and return
+   * the recording's ID. Up to eight speaker recordings may run at once. IDs are never reused.
+   */
+  startSpeakerRecording(options?: { recordingId?: string }): Promise<string>;
+
+  /**
+   * Stop a speaker recording, or the latest one when `recordingId` is omitted, and return its
+   * download URL, which takes the instance token and lasts while the instance runs. With
+   * `saveTo.localPath`, the client also downloads the WAV file there.
+   */
+  stopSpeakerRecording(recordingId?: string, saveTo?: { localPath?: string }): Promise<string>;
 
   /**
    * Launch an app by bundle ID (`com.example.app`), name (`TextEdit`) or path
@@ -447,6 +462,7 @@ class MacosInstancesHelpers extends MacosInstances {
           {
             ...(options?.recordingId !== undefined && { recordingId: options.recordingId }),
             ...(options?.quality !== undefined && { quality: options.quality }),
+            ...(options?.audio !== undefined && { audio: options.audio }),
             ...persistFields(options?.persist),
           },
           (msg) => msg['recordingId'] as string,
@@ -467,6 +483,29 @@ class MacosInstancesHelpers extends MacosInstances {
         const stopped = stoppedId || recordingId;
         if (!stopped) throw new Error('the instance did not say which recording stopped');
         const downloadUrl = `${apiUrl}/files?name=${encodeURIComponent(`recording_${stopped}.mp4`)}`;
+        if (saveTo.localPath) await downloadFileToLocalPath(downloadUrl, token, saveTo.localPath);
+        return downloadUrl;
+      },
+
+      async startSpeakerRecording(options) {
+        if (options?.recordingId !== undefined) validateRecordingId(options.recordingId);
+        return send(
+          'startSpeakerRecording',
+          { ...(options?.recordingId !== undefined && { recordingId: options.recordingId }) },
+          (msg) => msg['recordingId'] as string,
+        );
+      },
+
+      async stopSpeakerRecording(recordingId, saveTo = {}) {
+        if (recordingId !== undefined) validateRecordingId(recordingId);
+        const stoppedId = await send(
+          'stopSpeakerRecording',
+          { ...(recordingId !== undefined && { recordingId }) },
+          (msg) => msg['recordingId'] as string | undefined,
+        );
+        const stopped = stoppedId || recordingId;
+        if (!stopped) throw new Error('the instance did not say which speaker recording stopped');
+        const downloadUrl = `${apiUrl}/files?name=${encodeURIComponent(`speaker_${stopped}.wav`)}`;
         if (saveTo.localPath) await downloadFileToLocalPath(downloadUrl, token, saveTo.localPath);
         return downloadUrl;
       },
