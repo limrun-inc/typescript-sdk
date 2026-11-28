@@ -779,16 +779,10 @@ describe('headless device stream', () => {
     expect(client.getState().connection).toBe('idle');
     expect(vi.getTimerCount()).toBe(0);
   });
-  it.each([
-    ['iOS', { url: 'wss://host/ios_test', token: 'secret' }, true],
-    ['macOS', { url: 'wss://host/macos_test', token: 'secret' }, true],
-    ['Android', { url: 'wss://host/android_test', token: 'secret' }, false],
-  ] as const)('offers to receive speaker audio on %s: %s', async (_, options, expected) => {
-    const { socket, peer } = await handshake(create(options));
-    expect(peer.createOffer).toHaveBeenCalledWith(expect.objectContaining({ offerToReceiveAudio: expected }));
-    const offer = socket.sent.find((m) => m.type === 'offer')!;
-    expect('speakerAudio' in offer).toBe(expected);
-    if (expected) expect(offer.speakerAudio).toBe(true);
+  it.each(['ios', 'macos', 'android'])('offers to receive speaker audio on %s', async (platform) => {
+    const { socket, peer } = await handshake(create({ url: `wss://host/${platform}_test`, token: 'secret' }));
+    expect(peer.createOffer).toHaveBeenCalledWith(expect.objectContaining({ offerToReceiveAudio: true }));
+    expect(socket.sent.find((m) => m.type === 'offer')!.speakerAudio).toBe(true);
   });
   const speakerTrackEvent = (peer: Peer) => {
     const track = { kind: 'audio', id: 'speaker0' } as MediaStreamTrack;
@@ -818,8 +812,8 @@ describe('headless device stream', () => {
     client.updateOptions({ speakerMuted: true });
     expect(speakerMessages().map((m) => m.enabled)).toEqual([true, false]);
   });
-  it('tells a macOS guest whether the viewer listens', async () => {
-    const client = create({ url: 'wss://host/macos_test', token: 'secret', speakerMuted: false });
+  it.each(['macos', 'android'])('tells a %s device whether the viewer listens', async (platform) => {
+    const client = create({ url: `wss://host/${platform}_test`, token: 'secret', speakerMuted: false });
     const { socket } = await handshake(client);
     const offer = socket.sent.find((m) => m.type === 'offer')!;
     socket.message({ type: 'answer', sdp: 'v=0' });
@@ -830,18 +824,12 @@ describe('headless device stream', () => {
       { type: 'speakerAudio', sessionId: offer.sessionId, enabled: false },
     ]);
   });
-  it('keeps a muted viewer quiet and leaves Android alone', async () => {
-    const ios = create({ url: 'wss://host/ios_test', token: 'secret' });
-    const first = await handshake(ios);
-    first.socket.message({ type: 'answer', sdp: 'v=0' });
+  it('keeps a muted viewer quiet', async () => {
+    const client = create({ url: 'wss://host/ios_test', token: 'secret' });
+    const { socket } = await handshake(client);
+    socket.message({ type: 'answer', sdp: 'v=0' });
     await flush();
-    expect(first.socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
-    const android = create({ url: 'wss://host/android_test', token: 'secret' });
-    const second = await handshake(android);
-    second.socket.message({ type: 'answer', sdp: 'v=0' });
-    await flush();
-    android.updateOptions({ speakerMuted: false });
-    expect(second.socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
+    expect(socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
   });
   it('plays speaker audio through audio elements, apart from the screen', async () => {
     const client = create({ url: 'wss://host/ios_test', token: 'secret' });
@@ -860,15 +848,6 @@ describe('headless device stream', () => {
       expect(audio.play).toHaveBeenCalledOnce();
     }
     expect((video.srcObject as unknown as Stream).getTracks()).toEqual(screen.getTracks());
-  });
-  it('ignores audio tracks on platforms without speaker audio', async () => {
-    const client = create({ url: 'wss://host/android_test', token: 'secret' });
-    const { peer } = await handshake(client);
-    const audio = audioElement();
-    client.attachAudio(audio);
-    speakerTrackEvent(peer);
-    expect(audio.srcObject).toBeFalsy();
-    expect(audio.play).not.toHaveBeenCalled();
   });
   it('keeps refused speaker audio playing muted and reports it', async () => {
     const onSpeakerBlocked = vi.fn();

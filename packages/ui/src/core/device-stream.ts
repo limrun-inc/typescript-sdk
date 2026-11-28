@@ -69,8 +69,6 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   const watchOnly = options.watchOnly ?? false;
   const sessionId = options.sessionId ?? requestId();
   const platform = options.platform ?? detectPlatform(url ?? '');
-  // An iOS simulator and a macOS guest send their speaker; Android sends none.
-  const hasSpeaker = platform === 'ios' || platform === 'macos';
   let state: DeviceStreamState = {
     connection: 'idle',
     videoReady: false,
@@ -139,7 +137,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   // The socket whose offer has an answer; the device ignores speaker state for sessions it has not set up.
   let speakerSocket: WebSocket | null = null;
   const sendSpeakerState = () => {
-    if (!hasSpeaker || !speakerSocket || speakerSocket !== currentWs) return;
+    if (!speakerSocket || speakerSocket !== currentWs) return;
     if (speakerSocket.readyState !== WebSocket.OPEN) return;
     speakerSocket.send(
       JSON.stringify({ type: 'speakerAudio', sessionId, enabled: !(options.speakerMuted ?? true) }),
@@ -1243,9 +1241,8 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       const playback = { peer: peerConnection, displays: new Map<RTCRtpReceiver, 'primary' | 'inner'>() };
       playbackConnection = playback;
       refreshPlaybackStats();
-      // Carries the simulator's speaker output, which flows only while `speakerMuted` is false.
+      // Carries the device's speaker output, which flows only while `speakerMuted` is false.
       peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-      const wantsSpeakerAudio = hasSpeaker;
       const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
       const duoTransceiver = isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
 
@@ -1558,7 +1555,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
             if (entry.display === display) playVideo(element, entry, stream);
           }
         }
-        if (event.track.kind === 'audio' && wantsSpeakerAudio) {
+        if (event.track.kind === 'audio') {
           speakerStream = new MediaStream([event.track]);
           for (const audio of audios) playSpeakerStream(audio);
         }
@@ -1823,9 +1820,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       if (currentPeerConnection === peerConnection) {
         const offer = await peerConnection.createOffer({
           offerToReceiveVideo: true,
-          // This legacy option overrides transceiver directions: false turns
-          // the speaker's receive-only audio section inactive.
-          offerToReceiveAudio: wantsSpeakerAudio,
+          // This legacy option overrides transceiver directions: false would
+          // turn the speaker's receive-only audio section inactive.
+          offerToReceiveAudio: true,
         });
         if (!isCurrentAttempt() || currentPeerConnection !== peerConnection) {
           return;
@@ -1840,7 +1837,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
             JSON.stringify({
               type: 'offer',
               ...(isDuo ? { displayStreams: true } : {}),
-              ...(wantsSpeakerAudio ? { speakerAudio: true } : {}),
+              speakerAudio: true,
               ...(latencyTrace ? { latencyTraceVersion: 1 } : {}),
               sdp: offer.sdp,
               sessionId: sessionId,

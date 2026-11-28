@@ -318,7 +318,7 @@ export interface RemoteControlProps {
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
 
   /**
-   * iOS and macOS: plays the device's speaker output in sync with the screen
+   * Plays the device's speaker output in sync with the screen
    * when false. Defaults to true, and the device sends no sound while every
    * viewer is muted. Unmute from a click handler or after other user
    * interaction, because browsers refuse sound before it. Changing it never
