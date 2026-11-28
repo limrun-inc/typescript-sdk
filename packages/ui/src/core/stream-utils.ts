@@ -20,7 +20,7 @@ export const cancelSpeakerRetry = (audio: HTMLMediaElement): void => {
 };
 
 /**
- * Plays an element that carries the simulator's speaker audio. Browsers
+ * Plays an element that carries the device's speaker audio. Browsers
  * refuse sound outside a recent user gesture; the element then keeps playing
  * muted, `onBlocked` lets the caller show that the sound is off, and the next
  * click or key press anywhere on the page turns the sound back on. A caller
