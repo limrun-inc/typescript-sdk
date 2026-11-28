@@ -27,7 +27,11 @@ export const cancelSpeakerRetry = (audio: HTMLMediaElement): void => {
  * that mutes in between cancels that with `cancelSpeakerRetry`.
  */
 export const playSpeaker = (audio: HTMLMediaElement, onBlocked: () => void): void => {
-  cancelSpeakerRetry(audio);
+  if (speakerRetries.has(audio)) {
+    // A reconnect while the sound waits for a gesture keeps playing muted and keeps that retry.
+    void Promise.resolve(audio.play()).catch(() => undefined);
+    return;
+  }
   void Promise.resolve(audio.play()).catch((error: unknown) => {
     if ((error as { name?: string } | null)?.name !== 'NotAllowedError' || audio.muted) return;
     audio.muted = true;

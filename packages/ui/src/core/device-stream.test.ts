@@ -858,12 +858,18 @@ describe('headless device stream', () => {
     expect(audio.play).toHaveBeenCalledTimes(2);
     expect(onSpeakerBlocked).toHaveBeenCalledOnce();
 
+    // A replacement track before the gesture plays muted and keeps waiting for it.
+    speakerTrackEvent(peer);
+    await flush();
+    expect(audio.muted).toBe(true);
+    expect(audio.play).toHaveBeenCalledTimes(3);
+
     // A key press grants the gesture the browser wanted and plays the sound.
     vi.mocked(audio.play).mockResolvedValue(undefined);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
     await flush();
     expect(audio.muted).toBe(false);
-    expect(audio.play).toHaveBeenCalledTimes(3);
+    expect(audio.play).toHaveBeenCalledTimes(4);
 
     // A detached element stops waiting for one.
     vi.mocked(audio.play).mockImplementation((() => {
