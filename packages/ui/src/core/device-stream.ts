@@ -134,6 +134,15 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
   // Retries belong to one lifecycle; explicit start/stop invalidates its outstanding probes.
   let lifecycleGeneration = 0;
   let currentWs: WebSocket | null = null;
+  // The socket whose offer has an answer; limulator ignores speaker state for sessions it has not set up.
+  let speakerSocket: WebSocket | null = null;
+  const sendSpeakerState = () => {
+    if (platform !== 'ios' || !speakerSocket || speakerSocket !== currentWs) return;
+    if (speakerSocket.readyState !== WebSocket.OPEN) return;
+    speakerSocket.send(
+      JSON.stringify({ type: 'speakerAudio', sessionId, enabled: !(options.speakerMuted ?? true) }),
+    );
+  };
   let currentPeerConnection: RTCPeerConnection | null = null;
   let currentDataChannel: RTCDataChannel | null = null;
   let currentLatencyTrace: ReturnType<typeof createLatencyTrace> | null = null;
@@ -882,6 +891,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       });
     }
     currentOutboundMicSender = null;
+    speakerSocket = null;
     if (currentWs) {
       currentWs.onopen = null;
       currentWs.onmessage = null;
@@ -1231,9 +1241,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       const playback = { peer: peerConnection, displays: new Map<RTCRtpReceiver, 'primary' | 'inner'>() };
       playbackConnection = playback;
       refreshPlaybackStats();
-      // Carries the simulator's speaker output when `speakerAudio` asks for it.
+      // Carries the simulator's speaker output, which flows only while `speakerMuted` is false.
       peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-      const wantsSpeakerAudio = platform === 'ios' && !!options.speakerAudio;
+      const wantsSpeakerAudio = platform === 'ios';
       const videoTransceiver = peerConnection.addTransceiver('video', { direction: 'recvonly' });
       const duoTransceiver = isDuo ? peerConnection.addTransceiver('video', { direction: 'recvonly' }) : null;
 
@@ -1638,6 +1648,9 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
               return;
             }
             updateStatus('Set remote description');
+            // limulator registers the session before it answers, so it can take the speaker state now.
+            speakerSocket = ws;
+            if (!(options.speakerMuted ?? true)) sendSpeakerState();
             break;
           case 'candidate':
             if (!currentPeerConnection || currentPeerConnection !== peerConnection) {
@@ -1875,7 +1888,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
     updateStatus('Stopped');
   };
 
-  /** Plays the speaker audio requested by `speakerAudio`. The caller owns muting. */
+  /** Plays the speaker audio that `speakerMuted: false` asks for. The caller owns muting the element. */
   const attachAudio = (audio: HTMLAudioElement) => {
     if (disposed) throw new Error('Device stream is disposed');
     if (audios.has(audio)) throw new Error('Audio element is already attached');
@@ -2001,6 +2014,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
         if (isMicrophoneWanted()) void attachMicrophone();
         else void detachMicrophone();
       }
+      if ((previous.speakerMuted ?? true) !== (options.speakerMuted ?? true)) sendSpeakerState();
       if (!!previous.inspectMode !== !!options.inspectMode) {
         if (options.inspectMode) currentAxFetcher?.start();
         else {

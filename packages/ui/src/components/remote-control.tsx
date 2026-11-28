@@ -318,17 +318,11 @@ export interface RemoteControlProps {
   onMicrophoneStateChange?: (state: MicrophoneState) => void;
 
   /**
-   * iOS only: receive the simulator's speaker output and play it in sync with
-   * the screen. Off by default, because browsers refuse sound before the user
-   * interacts with the page. Changing it reconnects the stream. Playback
-   * stays silent until `speakerMuted` is false.
-   */
-  speakerAudio?: boolean;
-
-  /**
-   * Mutes the speaker audio requested by `speakerAudio`. Defaults to true.
-   * Unmute from a click handler or after other user interaction. The screen
-   * keeps playing either way; only the sound depends on it.
+   * iOS only: plays the simulator's speaker output in sync with the screen
+   * when false. Defaults to true, and the simulator sends no sound while every
+   * viewer is muted. Unmute from a click handler or after other user
+   * interaction, because browsers refuse sound before it. Changing it never
+   * reconnects the stream.
    */
   speakerMuted?: boolean;
 
@@ -579,7 +573,6 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       onTrace,
       microphoneEnabled = false,
       onMicrophoneStateChange,
-      speakerAudio = false,
       speakerMuted = true,
       onSpeakerBlocked,
     }: RemoteControlProps,
@@ -1966,7 +1959,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
         axMaxBackoffMs,
         androidElementTreeOptions,
         microphoneEnabled,
-        speakerAudio,
+        speakerMuted,
         onStateChange: (state) => {
           // Preserve the loaded layout behind errors; the placeholder returns when a new attempt starts.
           if (
@@ -2012,11 +2005,12 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
       // Token rotation must not restart a healthy stream: the server checks
       // the token only when a connection starts, so updateOptions carries it.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly, speakerAudio]);
+    }, [url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly]);
 
     // A layout effect runs while the click that unmuted is still in progress,
     // so the browser treats the resumed sound as user-initiated.
     useLayoutEffect(() => {
+      clientRef.current?.updateOptions({ speakerMuted });
       const audio = audioRef.current;
       if (!audio) return;
       cancelSpeakerRetry(audio);
@@ -2029,7 +2023,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     useEffect(() => {
       if (isDuo && innerVideoRef.current)
         return clientRef.current?.attachVideo(innerVideoRef.current, 'inner');
-    }, [isDuo, url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly, speakerAudio]);
+    }, [isDuo, url, propSessionId, streamDeviceModel, latencyTraceRequested, watchOnly]);
 
     useEffect(() => {
       clientRef.current?.updateOptions({

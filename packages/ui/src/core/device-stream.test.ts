@@ -780,14 +780,9 @@ describe('headless device stream', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
   it.each([
-    ['iOS without the option', { url: 'wss://host/ios_test', token: 'secret' }, false],
-    [
-      'Android with the option',
-      { url: 'wss://host/android_test', token: 'secret', speakerAudio: true },
-      false,
-    ],
-    ['iOS with the option', { url: 'wss://host/ios_test', token: 'secret', speakerAudio: true }, true],
-  ] as const)('asks for speaker audio only on %s', async (_, options, expected) => {
+    ['iOS', { url: 'wss://host/ios_test', token: 'secret' }, true],
+    ['Android', { url: 'wss://host/android_test', token: 'secret' }, false],
+  ] as const)('offers to receive speaker audio on %s: %s', async (_, options, expected) => {
     const { socket, peer } = await handshake(create(options));
     expect(peer.createOffer).toHaveBeenCalledWith(expect.objectContaining({ offerToReceiveAudio: expected }));
     const offer = socket.sent.find((m) => m.type === 'offer')!;
@@ -809,8 +804,34 @@ describe('headless device stream', () => {
     audio.play = vi.fn(() => play(audio));
     return audio;
   };
-  it('plays requested speaker audio through audio elements, apart from the screen', async () => {
-    const client = create({ url: 'wss://host/ios_test', token: 'secret', speakerAudio: true });
+  it('tells limulator whether the viewer listens, once it answered and on every change', async () => {
+    const client = create({ url: 'wss://host/ios_test', token: 'secret', speakerMuted: false });
+    const { socket } = await handshake(client);
+    const speakerMessages = () => socket.sent.filter((m) => m.type === 'speakerAudio');
+    const offer = socket.sent.find((m) => m.type === 'offer')!;
+    expect(speakerMessages()).toEqual([]);
+    socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    expect(speakerMessages()).toEqual([{ type: 'speakerAudio', sessionId: offer.sessionId, enabled: true }]);
+    client.updateOptions({ speakerMuted: true });
+    client.updateOptions({ speakerMuted: true });
+    expect(speakerMessages().map((m) => m.enabled)).toEqual([true, false]);
+  });
+  it('keeps a muted viewer quiet and leaves Android alone', async () => {
+    const ios = create({ url: 'wss://host/ios_test', token: 'secret' });
+    const first = await handshake(ios);
+    first.socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    expect(first.socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
+    const android = create({ url: 'wss://host/android_test', token: 'secret' });
+    const second = await handshake(android);
+    second.socket.message({ type: 'answer', sdp: 'v=0' });
+    await flush();
+    android.updateOptions({ speakerMuted: false });
+    expect(second.socket.sent.filter((m) => m.type === 'speakerAudio')).toEqual([]);
+  });
+  it('plays speaker audio through audio elements, apart from the screen', async () => {
+    const client = create({ url: 'wss://host/ios_test', token: 'secret' });
     const { peer } = await handshake(client);
     peer.connected();
     const early = audioElement();
@@ -827,8 +848,8 @@ describe('headless device stream', () => {
     }
     expect((video.srcObject as unknown as Stream).getTracks()).toEqual(screen.getTracks());
   });
-  it('ignores the audio track when speaker audio was not requested', async () => {
-    const client = create();
+  it('ignores audio tracks on platforms without speaker audio', async () => {
+    const client = create({ url: 'wss://host/android_test', token: 'secret' });
     const { peer } = await handshake(client);
     const audio = audioElement();
     client.attachAudio(audio);
@@ -841,7 +862,6 @@ describe('headless device stream', () => {
     const client = create({
       url: 'wss://host/ios_test',
       token: 'secret',
-      speakerAudio: true,
       onSpeakerBlocked,
     });
     const { peer } = await handshake(client);
@@ -1124,7 +1144,7 @@ describe('RemoteControl compatibility', () => {
     expect(fourth.peer.channel.send).toHaveBeenCalledOnce();
   });
 
-  it('plays speaker audio muted until asked, reports refusals and reconnects to change it', async () => {
+  it('plays speaker audio muted until asked, reports refusals and never reconnects for it', async () => {
     const onSpeakerBlocked = vi.fn();
     const refuseSound = function (this: HTMLMediaElement) {
       return this.muted ?
@@ -1132,8 +1152,12 @@ describe('RemoteControl compatibility', () => {
         : Promise.reject(Object.assign(new Error('needs a gesture'), { name: 'NotAllowedError' }));
     };
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(refuseSound);
-    await render({ speakerAudio: true, onSpeakerBlocked });
+    await render({ onSpeakerBlocked });
     const first = await connect();
+    await act(async () => {
+      first.socket.message({ type: 'answer', sdp: 'v=0' });
+      await flush();
+    });
     expect(first.socket.sent.find((m) => m.type === 'offer')).toMatchObject({ speakerAudio: true });
     const video = host.querySelector('video')!;
     const audio = host.querySelector('audio')!;
@@ -1151,15 +1175,15 @@ describe('RemoteControl compatibility', () => {
 
     // An unmute the browser accepts plays sound; the screen stays muted.
     play.mockResolvedValue(undefined);
-    await render({ speakerAudio: true, speakerMuted: false, onSpeakerBlocked });
+    await render({ speakerMuted: false, onSpeakerBlocked });
     expect(audio.muted).toBe(false);
     expect(video.muted).toBe(true);
     expect(first.peer.close).not.toHaveBeenCalled();
 
     // One it refuses, such as a reconnect long after the click, goes muted.
     play.mockImplementation(refuseSound);
-    await render({ speakerAudio: true, speakerMuted: true, onSpeakerBlocked });
-    await render({ speakerAudio: true, speakerMuted: false, onSpeakerBlocked });
+    await render({ speakerMuted: true, onSpeakerBlocked });
+    await render({ speakerMuted: false, onSpeakerBlocked });
     await act(flush);
     expect(audio.muted).toBe(true);
     expect(onSpeakerBlocked).toHaveBeenCalledOnce();
@@ -1174,10 +1198,10 @@ describe('RemoteControl compatibility', () => {
 
     // A caller that mutes after a refusal keeps it muted through later clicks.
     play.mockImplementation(refuseSound);
-    await render({ speakerAudio: true, speakerMuted: true, onSpeakerBlocked });
-    await render({ speakerAudio: true, speakerMuted: false, onSpeakerBlocked });
+    await render({ speakerMuted: true, onSpeakerBlocked });
+    await render({ speakerMuted: false, onSpeakerBlocked });
     await act(flush);
-    await render({ speakerAudio: true, speakerMuted: true, onSpeakerBlocked });
+    await render({ speakerMuted: true, onSpeakerBlocked });
     play.mockResolvedValue(undefined);
     await act(async () => {
       document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -1186,10 +1210,16 @@ describe('RemoteControl compatibility', () => {
     expect(audio.muted).toBe(true);
     expect(onSpeakerBlocked).toHaveBeenCalledTimes(2);
 
-    await render({ speakerAudio: false, onSpeakerBlocked });
-    expect(first.peer.close).toHaveBeenCalled();
-    const second = await connect();
-    expect(second.socket.sent.find((m) => m.type === 'offer')).not.toHaveProperty('speakerAudio');
+    // Every mute change reaches limulator over the same connection.
+    expect(first.socket.sent.filter((m) => m.type === 'speakerAudio').map((m) => m.enabled)).toEqual([
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+    ]);
+    expect(first.peer.close).not.toHaveBeenCalled();
   });
 
   it('applies watchOnly through RemoteControl and reconnects when it changes', async () => {
