@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.80.0](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.5...v0.80.0) (2026-11-28)
+
+
+### Features
+
+* **ui:** play iOS simulator speaker audio on request ([#693](https://github.com/limrun-inc/typescript-sdk/issues/693)) ([0bdbfa4](https://github.com/limrun-inc/typescript-sdk/commit/0bdbfa469a381c52707d61e207d0d114c1e9fce0))
+
+
+### Chores
+
+* **cli:** release 0.65.4 with SDK 0.79.5 ([#770](https://github.com/limrun-inc/typescript-sdk/issues/770)) ([51acf69](https://github.com/limrun-inc/typescript-sdk/commit/51acf692e8f1bfba37e9dbffa3df8ebb740204aa))
+
 ## [0.79.5](https://github.com/limrun-inc/typescript-sdk/compare/v0.79.4...v0.79.5) (2026-11-28)
 
 
