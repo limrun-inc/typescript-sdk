@@ -10,17 +10,40 @@ export const debugWarn = (...args: any[]) => {
   }
 };
 
+// Events that grant the page user activation, so play() with sound succeeds in their handlers.
+const SPEAKER_GESTURES = ['click', 'keydown'] as const;
+const speakerRetries = new WeakMap<HTMLMediaElement, () => void>();
+
+/** Drops a pending retry, because the caller chose mute or unmute itself. */
+export const cancelSpeakerRetry = (audio: HTMLMediaElement): void => {
+  speakerRetries.get(audio)?.();
+};
+
 /**
  * Plays an element that carries the simulator's speaker audio. Browsers
  * refuse sound outside a recent user gesture; the element then keeps playing
- * muted, so a later unmute from a click needs no new `play()`, and
- * `onBlocked` lets the caller show that the sound is off.
+ * muted, `onBlocked` lets the caller show that the sound is off, and the next
+ * click or key press anywhere on the page turns the sound back on. A caller
+ * that mutes in between cancels that with `cancelSpeakerRetry`.
  */
 export const playSpeaker = (audio: HTMLMediaElement, onBlocked: () => void): void => {
+  cancelSpeakerRetry(audio);
   void Promise.resolve(audio.play()).catch((error: unknown) => {
     if ((error as { name?: string } | null)?.name !== 'NotAllowedError' || audio.muted) return;
     audio.muted = true;
     void Promise.resolve(audio.play()).catch(() => undefined);
+    const document = audio.ownerDocument;
+    const retry = () => {
+      cancel();
+      audio.muted = false;
+      playSpeaker(audio, onBlocked);
+    };
+    const cancel = () => {
+      for (const type of SPEAKER_GESTURES) document.removeEventListener(type, retry, true);
+      speakerRetries.delete(audio);
+    };
+    for (const type of SPEAKER_GESTURES) document.addEventListener(type, retry, true);
+    speakerRetries.set(audio, cancel);
     onBlocked();
   });
 };

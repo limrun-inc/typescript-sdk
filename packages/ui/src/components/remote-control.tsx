@@ -3,6 +3,7 @@ import {
   detectPlatform,
   debugLog,
   debugWarn,
+  cancelSpeakerRetry,
   playSpeaker,
   safeInvoke,
   type DevicePlatform,
@@ -334,7 +335,8 @@ export interface RemoteControlProps {
   /**
    * Fires when the browser refuses to play the sound, for example when the
    * audio arrives or reconnects long after the click that unmuted it. The
-   * sound stays off until the caller unmutes again from a user interaction.
+   * sound stays off until the next click or key press on the page, unless the
+   * caller sets `speakerMuted` first.
    */
   onSpeakerBlocked?: () => void;
 }
@@ -2017,6 +2019,7 @@ export const RemoteControl = forwardRef<RemoteControlHandle, RemoteControlProps>
     useLayoutEffect(() => {
       const audio = audioRef.current;
       if (!audio) return;
+      cancelSpeakerRetry(audio);
       audio.muted = speakerMuted;
       if (!speakerMuted && audio.srcObject) {
         playSpeaker(audio, () => safeInvoke('onSpeakerBlocked', callbacksRef.current.onSpeakerBlocked));

@@ -857,6 +857,27 @@ describe('headless device stream', () => {
     expect(audio.muted).toBe(true);
     expect(audio.play).toHaveBeenCalledTimes(2);
     expect(onSpeakerBlocked).toHaveBeenCalledOnce();
+
+    // A key press grants the gesture the browser wanted and plays the sound.
+    vi.mocked(audio.play).mockResolvedValue(undefined);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    await flush();
+    expect(audio.muted).toBe(false);
+    expect(audio.play).toHaveBeenCalledTimes(3);
+
+    // A detached element stops waiting for one.
+    vi.mocked(audio.play).mockImplementation((() => {
+      return audio.muted ?
+          Promise.resolve()
+        : Promise.reject(Object.assign(new Error('needs a gesture'), { name: 'NotAllowedError' }));
+    }) as () => Promise<void>);
+    speakerTrackEvent(peer);
+    await flush();
+    expect(audio.muted).toBe(true);
+    client.dispose();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
+    await flush();
+    expect(audio.muted).toBe(true);
   });
   it('attaches a late Duo renderer to the retained inner track', async () => {
     const client = create();
@@ -1136,6 +1157,28 @@ describe('RemoteControl compatibility', () => {
     await act(flush);
     expect(audio.muted).toBe(true);
     expect(onSpeakerBlocked).toHaveBeenCalledOnce();
+
+    // The caller left it unmuted, so the next click anywhere brings the sound back.
+    play.mockResolvedValue(undefined);
+    await act(async () => {
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flush();
+    });
+    expect(audio.muted).toBe(false);
+
+    // A caller that mutes after a refusal keeps it muted through later clicks.
+    play.mockImplementation(refuseSound);
+    await render({ speakerAudio: true, speakerMuted: true, onSpeakerBlocked });
+    await render({ speakerAudio: true, speakerMuted: false, onSpeakerBlocked });
+    await act(flush);
+    await render({ speakerAudio: true, speakerMuted: true, onSpeakerBlocked });
+    play.mockResolvedValue(undefined);
+    await act(async () => {
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flush();
+    });
+    expect(audio.muted).toBe(true);
+    expect(onSpeakerBlocked).toHaveBeenCalledTimes(2);
 
     await render({ speakerAudio: false, onSpeakerBlocked });
     expect(first.peer.close).toHaveBeenCalled();

@@ -26,6 +26,7 @@ import {
   debugWarn,
   safeInvoke,
   detectPlatform,
+  cancelSpeakerRetry,
   playSpeaker,
   withAuthenticationToken,
 } from './stream-utils';
@@ -1886,6 +1887,7 @@ export function createDeviceStream(initialOptions: DeviceStreamOptions) {
       detached = true;
       attachments.delete(detach);
       audios.delete(audio);
+      cancelSpeakerRetry(audio);
       audio.srcObject = null;
     };
     attachments.add(detach);
